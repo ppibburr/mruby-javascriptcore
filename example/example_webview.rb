@@ -1,5 +1,6 @@
 Gtk.init
 w=Gtk::Window.new
+w.resize(400,400)
 w.add v=WebKit::WebView.new
 
 v.load_html_string "hello mruby",""
