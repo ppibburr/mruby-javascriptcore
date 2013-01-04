@@ -25,6 +25,23 @@ MRuby must be compiled with MRBGEMS active:
 * [libjavascriptcore] - tested with libjavascriptcoregtk-1.0 and 3.0, - OR -
 * [libwebkit] - tested with libwebkitgtk-1.0 and 3.0
 
+Synopsis
+--------------
+    rake -D
+      rake compile[script]
+                    compiles the library with your script
+    		        script, path to your file
+
+      rake compile-webkit[file]
+                    exposes a minimal interface to Gtk, WebKit, to your script
+
+      rake example-webview
+                    compile and run the ./example/example_webview.rb example
+
+      rake test
+                    runs the test script in ./test/
+
+
 Usage
 --------------
     # Clone the repo
@@ -34,6 +51,9 @@ Usage
                                        # in ./src/lib_path.rb 
                                        # ie, /usr/lib/libjavascriptcoregtk-1.0.so.0 
                                        # or /usr/lib/libwebkitgtk-1.0.so.0
+    # if using rake task 'compile-webkit'
+    # you need to export the paths to where webkitgtk can find gobject, gtk and
+    #  webkit, see ./tools/mruby-webkitgtk/README.md
     rake test; rake clean # optional, currently 2 assertions should fail
     rake compile[/path/to/your/script.rb] # an executable is created,
                                           # file basename minus extension
