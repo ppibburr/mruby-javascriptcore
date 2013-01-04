@@ -142,8 +142,8 @@ g[:q] = {
 assert z=g[:q][:foo].call,"expected true"
 assert_equal z,true
 
-g[:string] = "foo"
-assert_equal g[:string],"foo"
+g["string"] = "foo"
+assert_equal g["string"],"foo"
 
 puts "#{assertions.length} assertions:"
 passed = assertions.find_all() do |a| a end.length

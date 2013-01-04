@@ -2120,7 +2120,7 @@ class JS::Value
       if rv.is_a?(JS::Lib::String);
         s = rv
         JS::Lib::Value.make_string(ctx,s.to_s)
-      elsif rv.class.to_s == "String"
+      elsif rv.is_a?(::String)
         make_string(ctx,rv)
       elsif rv.is_a?(Integer)
        
@@ -2230,10 +2230,8 @@ class JS::Object
     if k.is_a?(Float) and k == k.to_i
       k = k.to_i
     end
-    if !k.is_a?(Integer)
-      k=k.to_sym
-    end
-    raise unless k.is_a?(Symbol) or k.is_a?(String) or k.is_a?(Integer)
+    
+    raise unless k.is_a?(Symbol) or k.is_a?(::String) or k.is_a?(Integer)
     k = k.to_s
     
     if k.is_a?(Integer)
@@ -2255,10 +2253,10 @@ class JS::Object
     if k.is_a?(Float) and k == k.to_i
       k = k.to_i
     end
-    
-    raise unless k.is_a?(Symbol) or k.is_a?(String) or k.is_a?(Integer)
+   
+    raise unless k.is_a?(Symbol) or k.is_a?(::String) or k.is_a?(Integer)
     k = k.to_s
-    p v
+
     #exit if k=="string"
     set_property(k,v)
 
