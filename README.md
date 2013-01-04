@@ -27,17 +27,17 @@ MRuby must be compiled with MRBGEMS active:
 
 Usage
 --------------
-
-1. Clone the repo
-2. `cd mruby-javascriptcore`
-3. `export MRUBY_PATH=/path/to/mruby`
-4. `export JSCORE_PATH=/path/to/jscore # optionaly edit JSCORE_PATH constant in ./src/lib_path.rb (at the top), ie,
-                                         /usr/lib/libwebkitgtk-1.0.so.0`
-5. `rake test; rake clean # optional, currently 2 assertions should fail`
-6. `rake compile[/path/to/your/script.rb] # an executable is created, file basename minus extension, appended with _run`
-7. `./script_run # change 'script' to match your file, copy/mv script_run to wherever` 
-8. `# rake clean # clean up and do another one`
-
+```bash
+# Clone the repo
+cd mruby-javascriptcore
+export MRUBY_PATH=/path/to/mruby
+export JSCORE_PATH=/path/to/jscore # optionaly edit JSCORE_PATH constant in ./src/lib_path.rb (at the top), ie,
+                                   # /usr/lib/libwebkitgtk-1.0.so.0
+rake test; rake clean # optional, currently 2 assertions should fail
+rake compile[/path/to/your/script.rb] # an executable is created, file basename minus extension, appended with _run
+./script_run # change 'script' to match your file, copy/mv script_run to wherever
+# rake clean # clean up and do another one
+```
 
 License
 -
