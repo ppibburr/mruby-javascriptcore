@@ -27,3 +27,17 @@ task :clean do
   `rm -rf tmp`
   `rm *_run`
 end
+
+task :"example-webview" do
+
+  wk = File.open("../mruby-webkitgtk/src/webkitgtk.rb").read
+  example = File.open("./example/example_webview.rb").read
+  File.open("./example/webview_temp.rb","w") do |f|
+    f.puts wk
+    f.puts example
+  end
+  file = File.expand_path("./example/webview_temp.rb")
+  Rake::Task["compile"].invoke("#{file}")
+  sh "rm example/webview_temp.rb"
+  sh "./webview_temp_run"
+end
