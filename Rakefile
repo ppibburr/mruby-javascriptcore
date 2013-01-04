@@ -8,11 +8,12 @@ task :compile, :script do |t,args|
       f.puts "JSCORE_PATH = '#{jp}'"
     end
   end
-  sh "cp src/lib_path.rb tmp/0.rb"
-  sh "cp src/mrubyjscore.rb tmp/1.rb"
-  sh "cp #{file} tmp/2.rb"
+  
+  sh "cp ../mruby-ffi/src/ffi.rb tmp/0.rb"  
+  sh "cp src/lib_path.rb tmp/1.rb"
+  sh "cp src/mrubyjscore.rb tmp/2.rb"
+  sh "cp #{file} tmp/3.rb"
   sh "cd tools; rake compile[#{n=File.basename(args[:script]).split(".")[0]}_run,#{Dir.getwd}/tmp/,true];cp #{n}_run #{Dir.getwd}/" 
-  puts "You can now execute ./#{name}"
 end
 
 desc "runs the test script in ./test/"
@@ -30,22 +31,26 @@ end
 
 desc "compile and run the ./example/example_webview.rb example"
 task :"example-webview" do
+  Rake::Task['compile-webkit'].invoke("./example/example_webview.rb")
+  `./example_webview_run`
+  `rm example_webview_run`
+end
 
+Dir.mkdir('out') unless File.exist?('out')
+
+desc "exposes a minimal interface to Gtk, WebKit, to your script"
+task :"compile-webkit",:file do |t,args|
+  `cd ../mruby-webkitgtk;rake configure`
   wk = File.open("../mruby-webkitgtk/src/webkitgtk.rb").read
-  example = File.open("./example/example_webview.rb").read
-  File.open("./example/webview_temp.rb","w") do |f|
+  example = File.open("#{args[:file]}").read
+  File.open("out/#{File.basename(args[:file])}","w") do |f|
+    f.puts File.open("../mruby-webkitgtk/src/lib_gobject_path.rb").read
+    f.puts File.open("../mruby-webkitgtk/src/lib_gtk_path.rb").read
+    f.puts File.open("../mruby-webkitgtk/src/lib_webkit_path.rb").read        
     f.puts wk
     f.puts example
   end
-  file = File.expand_path("./example/webview_temp.rb")
+  file = File.expand_path("./out/#{File.basename(args[:file])}")
   Rake::Task["compile"].invoke("#{file}")
-  `rm example/webview_temp.rb`
-  `./webview_temp_run`
-  `rm webview_temp_run`
+  `rm out/#{File.basename(args[:file])}`
 end
-
-#desc "exposes a minimal interface to Gtk, WebKit, to your script"
-#task :"compile-webkit",:file do |t,args|
-#  File.open("tmp/")
-#  Rake::Task["compile"].invoke("#{file}")
-#end
