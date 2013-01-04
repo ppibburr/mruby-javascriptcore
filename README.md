@@ -26,16 +26,21 @@ MRuby must be compiled with MRBGEMS active:
 * [libwebkit] - tested with libwebkitgtk-1.0 and 3.0
 
 Usage
-===
+--------------
 ```bash
 # Clone the repo
 cd mruby-javascriptcore
 export MRUBY_PATH=/path/to/mruby
-export JSCORE_PATH=/path/to/jscore # optionaly edit JSCORE_PATH constant in ./src/lib_path.rb (at the top), ie,
-                                   # /usr/lib/libwebkitgtk-1.0.so.0
+export JSCORE_PATH=/path/to/jscore # optionaly edit JSCORE_PATH constant 
+                                   # in ./src/lib_path.rb 
+                                   # ie, /usr/lib/libjavascriptcoregtk-1.0.so.0 
+                                   # or /usr/lib/libwebkitgtk-1.0.so.0
 rake test; rake clean # optional, currently 2 assertions should fail
-rake compile[/path/to/your/script.rb] # an executable is created, file basename minus extension, appended with _run
-./script_run # change 'script' to match your file, copy/mv script_run to wherever
+rake compile[/path/to/your/script.rb] # an executable is created,
+                                      # file basename minus extension
+                                      # appended with _run
+./script_run # execute. change 'script' to match your file
+# copy/mv script_run to wherever
 # rake clean # clean up and do another one
 ```
 
