@@ -1,3 +1,5 @@
+
+
 class Float
   def ffi_ptr
     CFunc::Double.new(CFunc::Float.new(self))
@@ -1224,13 +1226,13 @@ end
 #		TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 #		SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 # 
-JSCORE_LIB_PATH = "/usr/lib/libjavascriptcoregtk-3.0.so.0"
+
 
 module JS
   module Lib
     extend FFI::Lib
 
-    ffi_lib JSCORE_LIB_PATH
+    ffi_lib JSCORE_PATH
     typedef :pointer,:JSClassRef
     typedef :pointer,:JSObjectRef
     typedef :pointer,:JSStringRef
