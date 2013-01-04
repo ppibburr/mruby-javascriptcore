@@ -26,7 +26,7 @@ MRuby must be compiled with MRBGEMS active:
 * [libwebkit] - tested with libwebkitgtk-1.0 and 3.0
 
 Usage
---------------
+===
 ```bash
 # Clone the repo
 cd mruby-javascriptcore
