@@ -28,6 +28,7 @@ task :clean do
   `rm *_run`
 end
 
+desc "compile and run the ./example/example_webview.rb example"
 task :"example-webview" do
 
   wk = File.open("../mruby-webkitgtk/src/webkitgtk.rb").read
@@ -38,6 +39,13 @@ task :"example-webview" do
   end
   file = File.expand_path("./example/webview_temp.rb")
   Rake::Task["compile"].invoke("#{file}")
-  sh "rm example/webview_temp.rb"
-  sh "./webview_temp_run"
+  `rm example/webview_temp.rb`
+  `./webview_temp_run`
+  `rm webview_temp_run`
 end
+
+#desc "exposes a minimal interface to Gtk, WebKit, to your script"
+#task :"compile-webkit",:file do |t,args|
+#  File.open("tmp/")
+#  Rake::Task["compile"].invoke("#{file}")
+#end
