@@ -3,7 +3,7 @@
 
 module JS::String
   def get_utf8_cstring
-    ptr = CFunc::Pointer.malloc(12)
+    ptr = CFunc::Pointer.malloc(get_length+1)
     super(ptr,get_length+1)
     return ptr.to_s
   end

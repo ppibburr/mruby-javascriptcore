@@ -13,6 +13,7 @@
 ./JSContextGroupRef.rb
 ./JSPropertyNameAccumulatorRef.rb
 ./js.rb
+./ext/js_jscontext.rb
 ./ext/js_jsobject.rb
 ./ext/js_jsvalue.rb
 ./ext/js_jsstring.rb

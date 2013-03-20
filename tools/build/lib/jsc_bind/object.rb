@@ -6,8 +6,9 @@ module JSCBind
     def self.libname()
       unless @libname
         gir = GirBind.gir
-        gir.require("JSCore")
-        @libname = gir.shared_library("JSCore").split(",").last
+        gir.require("WebKit")
+        libs = gir.shared_library("WebKit").split(",")
+        @libname = libs.first
         if !@libname.index("lib")
           @libname = "lib#{@libname}.so"
         end

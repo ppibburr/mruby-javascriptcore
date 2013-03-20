@@ -2,7 +2,7 @@
 #
 
 module JSCBind
-  class Function < FFIBind::Function
+  class Function < FFIBind::Function   
     def attach where
       this = self
       q=where.to_s.split("::").last
@@ -18,16 +18,17 @@ module JSCBind
       idxa = []
       
       for i in 0..name.length-1
-        pl = l
-        pc = c
-        l = name[i] if name[i].downcase == name[i]
-        c = name[i] if name[i].downcase != name[i] and l
+
+        if name[i].downcase == name[i]
+          l = true
+        elsif l
+          c = true
+        end
+  
         if l and c
           idxa << i-1
           l = nil
           c = nil
-          pl = nil
-          pc = nil
         end        
       end
       
