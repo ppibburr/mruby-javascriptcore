@@ -363,10 +363,24 @@ module JS
 end
 
 #
+# -File- ./ext/js_jscontext.rb
+#
+
+class JS::JSContext
+  def execute str,this = nil
+    return JS::execute_script(self,str,this)
+  end
+end
+
+#
 # -File- ./ext/js_jsobject.rb
 #
 
 module JS::Object
+  def execute str
+    return JS::execute_script(context,str,self)
+  end
+
   def set_property prop,v
     raise "must specify name" unless prop
     v = JSValue.from_ruby(context,v)

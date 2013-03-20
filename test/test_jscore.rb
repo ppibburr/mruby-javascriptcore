@@ -10,7 +10,7 @@ end
 
 p obj.call("foo")
 
-obj = JS::JSObject.new(ctx,{:bar=>3})
+obj = JS::JSObject.new(ctx,{:bar=>"quux"})
 p obj[:bar]
 
 fun = Proc.new do |a,b|
@@ -22,5 +22,7 @@ gobj["add"] = fun
 p gobj[:add].call(1,2)
 p JS.execute_script(ctx,"add(1,2);")
 p JS.execute_script(ctx,"this.add(1,2);",gobj)
+p ctx.execute("add(1,2);")
+p obj.execute("this.bar;")
 
 
