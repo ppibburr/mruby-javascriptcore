@@ -22,3 +22,5 @@ gobj["add"] = fun
 p gobj[:add].call(1,2)
 p JS.execute_script(ctx,"add(1,2);")
 p JS.execute_script(ctx,"this.add(1,2);",gobj)
+
+
