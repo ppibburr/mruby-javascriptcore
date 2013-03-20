@@ -9,4 +9,4 @@ JS.execute_script(ctx,"puts('JavaScript');")
 
 JS.execute_script(ctx,"function hello(str) { return(\"Hello, \"+str+\"! I'm JavaScript\");};")
 
-puts gobj[:hello].call_as_function("MRuby")
+puts gobj[:hello].call("MRuby")

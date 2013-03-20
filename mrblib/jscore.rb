@@ -377,7 +377,11 @@ module JS::Object
       prop = prop.to_s
       v = super prop,nil
     end
-    return v.to_ruby
+    q = v.to_ruby
+    if q.is_a?(JSObject) and q.is_function
+      q.this = self
+    end
+    return q
   end
   
   def set_property_at_index i,v
@@ -403,15 +407,22 @@ module JS::Object
     v.set_context(context)
     return v
   end
-  
-  def call_as_function *o,&b
+end
+
+module JS::ObjectIsFunction
+  attr_accessor :this
+  def call_as_function this,*o,&b
     vary = o.map do |v| JS::JSValue.from_ruby(context,v) end
     jary = CFunc::Pointer[vary.length]
     vary.each_with_index do |v,i|
       jary[i].value = v.to_ptr
     end
 
-    super(nil,vary.length,jary,nil).to_ruby
+    super(this,vary.length,jary,nil).to_ruby
+  end
+    
+  def call(*o,&b)
+    call_as_function this,*o,&b
   end
 end
 
@@ -454,6 +465,9 @@ class JS::JSObject
   def initialize *o
     super
     extend JS::Object
+    if is_function
+      extend JS::ObjectIsFunction
+    end
   end
   
   def self.new ctx,v=nil,&b

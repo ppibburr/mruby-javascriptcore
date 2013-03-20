@@ -8,7 +8,7 @@ obj = JS::JSObject.new(ctx) do |*o|
   puts "i was passed: #{o.join(", ")}"
 end
 
-p obj.call_as_function("foo")
+p obj.call("foo")
 
 obj = JS::JSObject.new(ctx,{:bar=>3})
 p obj[:bar]
@@ -19,6 +19,6 @@ end
 
 gobj["add"] = fun
 
-p gobj[:add].call_as_function(1,2)
+p gobj[:add].call(1,2)
 p JS.execute_script(ctx,"add(1,2);")
 p JS.execute_script(ctx,"this.add(1,2);",gobj)
