@@ -1,7 +1,7 @@
 ctx = JS::JSGlobalContext.create(nil)
 gobj = ctx.get_global_object
 
-gobj[:puts] = K = Proc.new do |str|
+gobj[:puts] = Proc.new do |str|
   puts "Hello #{str}! I'm Mruby"
 end
 
