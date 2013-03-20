@@ -1,3 +1,6 @@
+
+
+
 #
 # -File- ./javascriptcore.rb
 #
@@ -6,8 +9,8 @@ module JavaScriptCore
     def self.libname()
       unless @libname
         gir = GirBind.gir
-        gir.require("JSCore")
-        @libname = gir.shared_library("JSCore").split(",").last
+        gir.require("WebKit")
+        @libname = gir.shared_library("WebKit").split(",").first
         if !@libname.index("lib")
           @libname = "lib#{@libname}.so"
         end
@@ -58,16 +61,17 @@ module JSCBind
       idxa = []
       
       for i in 0..name.length-1
-        pl = l
-        pc = c
-        l = name[i] if name[i].downcase == name[i]
-        c = name[i] if name[i].downcase != name[i] and l
+
+        if name[i].downcase == name[i]
+          l = true
+        elsif l
+          c = true
+        end
+  
         if l and c
           idxa << i-1
           l = nil
           c = nil
-          pl = nil
-          pc = nil
         end        
       end
       
@@ -110,8 +114,9 @@ module JSCBind
     def self.libname()
       unless @libname
         gir = GirBind.gir
-        gir.require("JSCore")
-        @libname = gir.shared_library("JSCore").split(",").last
+        gir.require("WebKit")
+        libs = gir.shared_library("WebKit").split(",")
+        @libname = libs.first
         if !@libname.index("lib")
           @libname = "lib#{@libname}.so"
         end
@@ -454,6 +459,7 @@ class JS::JSObject
   o.callback(:JSObjectCallAsFunctionCallback,[:pointer,:pointer,:pointer,:pointer,:pointer,:pointer],:pointer)
 
   CALLBACKS = []
+
   class << self
     alias :_make_ :make
     def make ctx,cls = nil, q = nil
