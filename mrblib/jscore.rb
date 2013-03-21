@@ -17,6 +17,171 @@ module JavaScriptCore
 end
 
 #
+# -File- ./jsc_bind/argument.rb
+#
+
+module JSCBind
+  module Argument
+    def make_pointer v
+      if type == :JSStringRef
+        if v.is_a?(CFunc::Pointer)
+          return v
+        else
+          str = JS::JSString.create_with_utf8_cstring(v)
+          return str.to_ptr
+        end
+      elsif type == :JSClassRef
+        return v
+      else
+        super
+      end
+    end
+  end
+end
+
+#
+# -File- ./jsc_bind/function.rb
+#
+
+module JSCBind
+  class Function < FFIBind::Function   
+    def attach where
+      this = self
+      q=where.to_s.split("::").last
+      
+      if q.index(">")
+        q = q[0..q.length-2]
+      end
+      
+      name = @name.to_s.split(q).last
+      
+      l = nil
+      c = nil
+      idxa = []
+      
+      for i in 0..name.length-1
+
+        if name[i].downcase == name[i]
+          l = true
+        elsif l
+          c = true
+        end
+  
+        if l and c
+          idxa << i-1
+          l = nil
+          c = nil
+        end        
+      end
+      
+      c = 0
+      idxa.each do |i|
+        f=name[0..i+c]
+        l=name[i+c+1..name.length-1]
+        name = f+"_"+l
+        c+=1
+      end
+      
+      where.define_method name.downcase do |*o,&b|
+        aa = where.ancestors
+        if aa.index(JSCBind::ObjectWithContext)
+          if this.arguments[0].type == :JSContextRef
+            o = [context,self].push(*o)
+          end
+        elsif aa.index(JSCBind::Object)
+          o = [self].push(*o)
+        end
+   
+        result = this.invoke(*o,&b)
+        if result.is_a?(JSCBind::ObjectWithContext)
+          if !result.context
+            result.set_context(o[0])
+          end
+        end
+        next result
+      end
+    end
+  end
+end  
+  
+#
+# -File- ./jsc_bind/object.rb
+#  
+  
+module JSCBind  
+  class Object < FFIBind::ObjectBase 
+    def self.libname()
+      unless @libname
+        gir = GirBind.gir
+        gir.require("WebKit")
+        libs = gir.shared_library("WebKit").split(",")
+        @libname = libs.last
+        if !@libname.index("lib")
+          @libname = "lib#{@libname}.so"
+        end
+      end
+      @libname
+    end   
+  
+    def self.add_function(*o)
+      o[1] = o[1].to_s
+      obj = nil
+      if o.last.is_a? Hash
+        obj = o.last
+        o[o.length-1] = :pointer
+      end
+      
+      f = JSCBind::Function.add_function(*o)
+      f.arguments.each do |a|
+        a.extend JSCBind::Argument
+      end
+      if obj
+        f.return_type.type = :object
+        f.return_type.object = obj[:object]
+      end
+      
+      return f
+    end
+  end
+end
+
+#
+# -file- ./jsc_bind/object_with_context.rb
+#
+
+module JSCBind
+  class ObjectWithContext < self::Object
+    attr_accessor :context
+    def set_context(ctx)
+      if !ctx.is_a?(JavaScriptCore::JSContext)
+        ctx = JavaScriptCore::JSContext.wrap(ctx)
+      end
+      
+      @context = ctx
+    end
+  end
+end
+
+
+#
+# -File- ./javascriptcore.rb
+#
+
+module JavaScriptCore
+    def self.libname()
+      unless @libname
+        gir = GirBind.gir
+        gir.require("WebKit")
+        @libname = gir.shared_library("WebKit").split(",").last
+        if !@libname.index("lib")
+          @libname = "lib#{@libname}.so"
+        end
+      end
+      @libname
+    end
+end
+
+#
 # -File- ./JSStringRef.rb
 #
 
