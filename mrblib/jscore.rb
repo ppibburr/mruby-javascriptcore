@@ -627,7 +627,13 @@ class JS::JSValue
   def to_ruby
     if is_object
       self.protect
-      return to_object nil
+      v = to_object nil
+      
+      if v.is_a?(RObject)
+        v = v.ruby
+      end
+      
+      return v
     elsif is_number
       n = to_number nil
       if n.floor == n
