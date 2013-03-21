@@ -362,7 +362,7 @@ JS=JavaScriptCore
 
 module JS
   def self.make_context()
-    JS::JSGlobalContext.new(nil)
+    return JSGlobalContext.create(nil)
   end
 end
 

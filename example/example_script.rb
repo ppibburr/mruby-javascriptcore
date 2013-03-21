@@ -23,4 +23,7 @@ end
 
 script = GLib.file_get_contents("./script.js")[1]
 
-ctx.execute(script)
+p ctx.execute(script)[0]
+p ctx.execute(script)[1]
+p ctx.execute(script)[2]
+p ctx.execute(script)[3]

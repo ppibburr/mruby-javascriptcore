@@ -1,4 +1,5 @@
-ctx = JS::JSGlobalContext.create(nil)
+ctx = JS.make_context()
+
 gobj = ctx.get_global_object
 
 gobj[:puts] = Proc.new do |str|
