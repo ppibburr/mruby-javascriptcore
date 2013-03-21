@@ -364,6 +364,17 @@ module JS
   def self.make_context()
     return JSGlobalContext.create(nil)
   end
+  
+  def self.ruby_ary2js_ary ctx,o
+    jary = CFunc::Pointer[o.length]
+    
+    o.each_with_index do |q,i| 
+      v = JS::JSValue.from_ruby(ctx,q).to_ptr
+      jary[i].value = v 
+    end
+    
+    return jary  
+  end
 end
 
 module JS
@@ -461,6 +472,27 @@ module JS::Object
     v.set_context(context)
     return v
   end
+  
+  def is_array
+    if context.execute("Array.isArray(this);",self)
+      return true
+    end
+    return false
+  end
+end
+
+module JS::ObjectIsArray
+  include Enumerable
+  def each
+    l = self.get_property(:length)-1
+    for i in 0..l
+      yield get_property(i)
+    end
+  end
+  
+  def length
+    self[:length]
+  end
 end
 
 
@@ -474,12 +506,7 @@ module JS::ObjectIsFunction
       len += 1
     end
     
-    jary = CFunc::Pointer[len]
-    
-    o.each_with_index do |q,i| 
-      v = JS::JSValue.from_ruby(context,q).to_ptr
-      jary[i].value = v 
-    end
+    jary = JS.ruby_ary2js_ary(context,o)
     
     if b
       v = JS::JSValue.from_ruby(context,&b).to_ptr
@@ -552,7 +579,17 @@ class JS::JSObject
           a << v.to_ruby
         end
         
-        JS::JSValue.from_ruby(ctx,b.call(*a)).to_ptr
+        if a.last.is_a?(JS::JSObject) and a.last.is_function
+          closure = a.pop
+        end
+        
+        if closure
+          next((JS::JSValue.from_ruby(ctx,b.call(*a) do |*oo,&bb|
+            next closure.call(*oo,&bb)
+          end)).to_ptr)
+        else
+          next JS::JSValue.from_ruby(ctx,b.call(*a)).to_ptr
+        end
       end
     end  
   end
@@ -602,10 +639,8 @@ class JS::JSValue
       end
       return obj.to_value
     elsif v.is_a?(Array)
-      obj = JSObject.make(ctx)
-      v.each_with_index do |q,i|
-        obj[i] = q
-      end
+      jary = JS.ruby_ary2js_ary(ctx,v)
+      obj = JSObject.make_array(ctx,v.length,jary,nil)
       return obj.to_value
     elsif v.is_a?(Symbol)
       return make_string(ctx,v.to_s)
@@ -627,13 +662,19 @@ class JS::JSValue
   def to_ruby
     if is_object
       self.protect
-      v = to_object nil
+      o = to_object nil
       
-      if v.is_a?(RObject)
-        v = v.ruby
+      addr = CFunc::UInt16.get(o.to_ptr.addr)
+      
+      if v=RObject::OBJECT_STORE[addr]
+        return v
       end
       
-      return v
+      if o.is_array
+        o.extend JS::ObjectIsArray
+      end
+      
+      return o
     elsif is_number
       n = to_number nil
       if n.floor == n
@@ -725,8 +766,8 @@ module JS
 
       if (ruby = OBJECT_STORE[addr])
         if ruby.respond_to?(name.to_sym)
-          result = JSValue.from_ruby ctx do |*o|
-            ruby.send(name,*o)
+          result = JSValue.from_ruby ctx do |*o,&b|
+            ruby.send(name,*o,&b)
           end
         end
       end
