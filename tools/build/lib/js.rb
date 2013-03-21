@@ -4,6 +4,23 @@
 JS=JavaScriptCore
 
 module JS
+  def self.make_context()
+    return JSGlobalContext.create(nil)
+  end
+  
+  def self.ruby_ary2js_ary ctx,o
+    jary = CFunc::Pointer[o.length]
+    
+    o.each_with_index do |q,i| 
+      v = JS::JSValue.from_ruby(ctx,q).to_ptr
+      jary[i].value = v 
+    end
+    
+    return jary  
+  end
+end
+
+module JS
   class SyntaxError < RuntimeError;end
 
   f = JSCBind::Function.add_function libname,:JSEvaluateScript,[:JSContextRef,:JSStringRef,:JSObjectRef,:JSStringRef,:int,:JSValueRef],:JSValueRef
@@ -16,8 +33,11 @@ module JS
     str = JSString.create_with_utf8_cstring(str)
     ec = JSValue.make_null(ctx)
     if jscheck_script_syntax(ctx,str,nil,0,ec.to_ptr.addr)
-      v=JSValue.wrap(jsevaluate_script(ctx,str,this,nil,0,nil))
+      v=JSValue.wrap(jsevaluate_script(ctx,str,this,nil,0,ec.to_ptr.addr))
       v.context = ctx
+      if eo=ec.to_ruby
+        puts eo[:message]
+      end
       return v.to_ruby
     else
       e = ec.to_ruby

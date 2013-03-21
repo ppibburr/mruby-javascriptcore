@@ -8,7 +8,7 @@ module JSCBind
         gir = GirBind.gir
         gir.require("WebKit")
         libs = gir.shared_library("WebKit").split(",")
-        @libname = libs.first
+        @libname = libs.last
         if !@libname.index("lib")
           @libname = "lib#{@libname}.so"
         end
@@ -54,5 +54,6 @@ module JSCBind
     end
   end
 end
+
 
 #

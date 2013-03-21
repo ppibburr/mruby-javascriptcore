@@ -2,7 +2,7 @@
 #
 
 class JS::JSValue
-  def self.from_ruby ctx,v
+  def self.from_ruby ctx,v=nil,&b
     if v == true or v == false
       return make_boolean(ctx,v)
     elsif v.is_a?(Numeric)
@@ -16,10 +16,8 @@ class JS::JSValue
       end
       return obj.to_value
     elsif v.is_a?(Array)
-      obj = JSObject.make(ctx)
-      v.each_with_index do |q,i|
-        obj[i] = q
-      end
+      jary = JS.ruby_ary2js_ary(ctx,v)
+      obj = JSObject.make_array(ctx,v.length,jary,nil)
       return obj.to_value
     elsif v.is_a?(Symbol)
       return make_string(ctx,v.to_s)
@@ -28,15 +26,32 @@ class JS::JSValue
     elsif v.is_a? Proc
       obj = JS::JSObject.make_function_with_callback(ctx,&v)
       return obj.to_value
+    elsif b
+      obj = JS::JSObject.make_function_with_callback(ctx,&b)
+      return obj.to_value
     elsif v == nil
       return make_undefined(ctx)
+    else
+      return RObject.make(ctx,v).to_value
     end
   end
   
   def to_ruby
     if is_object
       self.protect
-      return to_object nil
+      o = to_object nil
+      
+      addr = CFunc::UInt16.get(o.to_ptr.addr)
+      
+      if v=RObject::OBJECT_STORE[addr]
+        return v
+      end
+      
+      if o.is_array
+        o.extend JS::ObjectIsArray
+      end
+      
+      return o
     elsif is_number
       n = to_number nil
       if n.floor == n
@@ -52,7 +67,7 @@ class JS::JSValue
       return nil
     elsif is_null
       return nil
-    
+    else
       raise "JS::Value#to_ruby Conversion Error"
     end
   end

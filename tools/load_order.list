@@ -3,6 +3,7 @@
 ./jsc_bind/argument.rb
 ./jsc_bind/function.rb
 ./jsc_bind/object.rb
+./javascriptcore.rb
 ./JSStringRef.rb
 ./JSClassRef.rb
 ./JSObjectRef.rb
@@ -17,3 +18,5 @@
 ./ext/js_jsobject.rb
 ./ext/js_jsvalue.rb
 ./ext/js_jsstring.rb
+./ext/js_jsclassdefinition.rb
+./js_robject.rb

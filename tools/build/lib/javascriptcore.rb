@@ -6,7 +6,7 @@ module JavaScriptCore
       unless @libname
         gir = GirBind.gir
         gir.require("WebKit")
-        @libname = gir.shared_library("WebKit").split(",").first
+        @libname = gir.shared_library("WebKit").split(",").last
         if !@libname.index("lib")
           @libname = "lib#{@libname}.so"
         end

@@ -11,6 +11,8 @@ module JSCBind
           str = JS::JSString.create_with_utf8_cstring(v)
           return str.to_ptr
         end
+      elsif type == :JSClassRef
+        return v
       else
         super
       end
