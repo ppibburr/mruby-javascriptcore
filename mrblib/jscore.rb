@@ -196,6 +196,12 @@ end
 JS=JavaScriptCore
 
 module JS
+  def self.make_context()
+    JS::JSGlobalContext.new(nil)
+  end
+end
+
+module JS
   class SyntaxError < RuntimeError;end
 
   f = JSCBind::Function.add_function libname,:JSEvaluateScript,[:JSContextRef,:JSStringRef,:JSObjectRef,:JSStringRef,:int,:JSValueRef],:JSValueRef
@@ -295,10 +301,8 @@ end
 
 module JS::ObjectIsFunction
   attr_accessor :this
-  FC = {}
+  
   def call_as_function this,*o,&b
-    FC[b] = true
-    
     len = o.length
     
     if b
@@ -320,14 +324,15 @@ module JS::ObjectIsFunction
     err = JSValue.make_null(context)
 
     q = super(this,len,jary,err).to_ruby
+  
     if eo=err.to_ruby
       raise eo[:message]
     end
+  
     return q
   end
     
   def call(*o,&b)
-    FC[b] = b
     return call_as_function this,*o,&b
   end
 end
@@ -335,19 +340,23 @@ end
 class JS::JSObject
   o = ::Object.new
   o.extend FFI::Library
+  
   o.callback(:JSObjectCallAsFunctionCallback,[:pointer,:pointer,:pointer,:pointer,:pointer,:pointer],:pointer)
+  
   o.typedef :int,:JSType
-    o.callback :JSObjectGetPropertyCallback,[:JSContextRef,:JSObjectRef,:JSStringRef,:pointer],:JSValueRef
-    o.callback :JSObjectSetPropertyCallback,[:JSContextRef,:JSObjectRef,:JSStringRef,:JSValueRef,:pointer],:bool
-    o.callback :JSObjectHasPropertyCallback,[:JSContextRef,:JSObjectRef,:JSStringRef],:bool
-    o.callback :JSObjectDeletePropertyCallback,[:JSContextRef,:JSObjectRef,:JSStringRef,:pointer],:bool
-    o.callback :JSObjectCallAsConstructorCallback,[:JSContextRef,:JSObjectRef,:pointer,:pointer],:JSValueRef
-    o.callback :JSObjectHasInstanceCallback,[:JSContextRef,:JSObjectRef,:JSValueRef,:pointer],:bool
-    o.callback :JSObjectConvertToTypeCallback,[:JSContextRef,:JSObjectRef,:JSType,:pointer],:JSValueRef
-    o.callback :JSObjectCallAsConstructorCallback,[:JSContextRef,:JSObjectRef,:size_t,:pointer,:pointer],:JSObjectRef
-    o.callback :JSObjectInitializeCallback,[:JSContextRef,:JSObjectRef,:pointer,:pointer],:JSValueRef
-    o.callback :JSObjectFinalizeCallback,[:JSObjectRef],:void
-    o.callback :JSObjectGetPropertyNamesCallback,[:JSContextRef,:JSObjectRef,:JSPropertyNameAccumulatorRef],:void  
+  
+  o.callback :JSObjectGetPropertyCallback,[:JSContextRef,:JSObjectRef,:JSStringRef,:pointer],:JSValueRef
+  o.callback :JSObjectSetPropertyCallback,[:JSContextRef,:JSObjectRef,:JSStringRef,:JSValueRef,:pointer],:bool
+  o.callback :JSObjectHasPropertyCallback,[:JSContextRef,:JSObjectRef,:JSStringRef],:bool
+  o.callback :JSObjectDeletePropertyCallback,[:JSContextRef,:JSObjectRef,:JSStringRef,:pointer],:bool
+  o.callback :JSObjectCallAsConstructorCallback,[:JSContextRef,:JSObjectRef,:pointer,:pointer],:JSValueRef
+  o.callback :JSObjectHasInstanceCallback,[:JSContextRef,:JSObjectRef,:JSValueRef,:pointer],:bool
+  o.callback :JSObjectConvertToTypeCallback,[:JSContextRef,:JSObjectRef,:JSType,:pointer],:JSValueRef
+  o.callback :JSObjectCallAsConstructorCallback,[:JSContextRef,:JSObjectRef,:size_t,:pointer,:pointer],:JSObjectRef
+  o.callback :JSObjectInitializeCallback,[:JSContextRef,:JSObjectRef,:pointer,:pointer],:JSValueRef
+  o.callback :JSObjectFinalizeCallback,[:JSObjectRef],:void
+  o.callback :JSObjectGetPropertyNamesCallback,[:JSContextRef,:JSObjectRef,:JSPropertyNameAccumulatorRef],:void  
+  
   CALLBACKS = []
 
   class << self
@@ -469,7 +478,7 @@ class JS::JSValue
       return nil
     elsif is_null
       return nil
-    
+    else
       raise "JS::Value#to_ruby Conversion Error"
     end
   end
@@ -498,79 +507,85 @@ class JS::JSString
   end
 end
 
+#
+# -File- ./ext/js_jsclassdefinition.rb
+#
 
 module JS
     class JSClassDefinition < CFunc::Struct
       define CFunc::Int, :version,
-		CFunc::Pointer, :attributes,
-		CFunc::Pointer, :className,
-		CFunc::Pointer, :parentClass,
-		CFunc::Pointer, :staticValues,
-		CFunc::Pointer, :staticFunctions,
-		CFunc::Pointer, :initialize,
-		CFunc::Pointer, :finalize,
-		CFunc::Pointer, :hasProperty,
-		CFunc::Pointer, :getProperty,
-		CFunc::Pointer, :setProperty,
-		CFunc::Pointer, :deleteProperty,
-		CFunc::Pointer, :getPropertyNames,
-		CFunc::Pointer, :callAsFunction, 
-		CFunc::Pointer, :callAsConstructor, 
-		CFunc::Pointer, :hasInstance,
-		CFunc::Pointer, :convertToType		
+      CFunc::Pointer, :attributes,
+      CFunc::Pointer, :className,
+      CFunc::Pointer, :parentClass,
+      CFunc::Pointer, :staticValues,
+      CFunc::Pointer, :staticFunctions,
+      CFunc::Pointer, :initialize,
+      CFunc::Pointer, :finalize,
+      CFunc::Pointer, :hasProperty,
+      CFunc::Pointer, :getProperty,
+      CFunc::Pointer, :setProperty,
+      CFunc::Pointer, :deleteProperty,
+      CFunc::Pointer, :getPropertyNames,
+      CFunc::Pointer, :callAsFunction, 
+      CFunc::Pointer, :callAsConstructor, 
+      CFunc::Pointer, :hasInstance,
+      CFunc::Pointer, :convertToType		
     end		
 end
 
+#
+# -File- ./js_robject.rb
+#
+
 module JS  
   module RObject
-      OBJECT_STORE = {}
-      F = []
+    OBJECT_STORE = {}
+  
 	  CLASS_DEF = JSClassDefinition.new
 	  CLASS_DEF[:version] = 0
 	  
 	  CLASS_DEF[:getProperty] = RObjectGetProperty = CFunc::Closure.new(CFunc::Pointer,[CFunc::Pointer,CFunc::Pointer,CFunc::Pointer,CFunc::Pointer]) do |ctx,obj,name,err|
-		ctx = JSContext.wrap(ctx)
-		str = JSString.wrap(name)
-		name = str.to_s
-		addr = CFunc::UInt16.get(obj.addr)
+      ctx = JSContext.wrap(ctx)
+      str = JSString.wrap(name)
+      name = str.to_s
+      addr = CFunc::UInt16.get(obj.addr)
 
-		undefined = JSValue.make_undefined(ctx)
+      undefined = JSValue.make_undefined(ctx)
 
-		if (ruby = OBJECT_STORE[addr])
-		  if ruby.respond_to?(name.to_sym)
-		      result = JSValue.from_ruby ctx do |*o|
-		        ruby.send(name,*o)
-		      end
-		  end
+      if (ruby = OBJECT_STORE[addr])
+        if ruby.respond_to?(name.to_sym)
+          result = JSValue.from_ruby ctx do |*o|
+            ruby.send(name,*o)
+          end
         end
-		
-		if result
-		  next result.to_ptr
-        else
-	      next undefined.to_ptr
-	    end
-	  end
-	  
+      end
+      
+      if result
+        next result.to_ptr
+      else
+        next undefined.to_ptr
+      end
+    end
+    
 	  RObjectClass = JSClass.create(CLASS_DEF.addr.value)  
 	  
     def self.make(ctx,v=Object)
       ins = JSObject.make(ctx,RObjectClass,nil)
+     
       ins.extend self
       ins.mapped = {}
       ins.ruby = v
+      
       addr = CFunc::UInt16.get(ins.to_ptr.addr)
+      
       OBJECT_STORE[addr] = v
+      
       ins.set_context ctx
-      ins
+      
+      return ins
     end
     
     
     attr_accessor :mapped,:ruby
-  end
-end
-
-module JS
-  def self.make_context()
-    JS::JSGlobalContext.new(nil)
   end
 end
