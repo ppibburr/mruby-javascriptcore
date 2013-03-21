@@ -1,6 +1,3 @@
-
-
-
 #
 # -File- ./javascriptcore.rb
 #
@@ -10,157 +7,13 @@ module JavaScriptCore
       unless @libname
         gir = GirBind.gir
         gir.require("WebKit")
-        @libname = gir.shared_library("WebKit").split(",").first
+        @libname = gir.shared_library("WebKit").split(",").last
         if !@libname.index("lib")
           @libname = "lib#{@libname}.so"
         end
       end
       @libname
     end
-end
-
-#
-# -File- ./jsc_bind/argument.rb
-#
-
-module JSCBind
-  module Argument
-    def make_pointer v
-      if type == :JSStringRef
-        if v.is_a?(CFunc::Pointer)
-          return v
-        else
-          str = JS::JSString.create_with_utf8_cstring(v)
-          return str.to_ptr
-        end
-      else
-        super
-      end
-    end
-  end
-end
-
-#
-# -File- ./jsc_bind/function.rb
-#
-
-module JSCBind
-  class Function < FFIBind::Function   
-    def attach where
-      this = self
-      q=where.to_s.split("::").last
-      
-      if q.index(">")
-        q = q[0..q.length-2]
-      end
-      
-      name = @name.to_s.split(q).last
-      
-      l = nil
-      c = nil
-      idxa = []
-      
-      for i in 0..name.length-1
-
-        if name[i].downcase == name[i]
-          l = true
-        elsif l
-          c = true
-        end
-  
-        if l and c
-          idxa << i-1
-          l = nil
-          c = nil
-        end        
-      end
-      
-      c = 0
-      idxa.each do |i|
-        f=name[0..i+c]
-        l=name[i+c+1..name.length-1]
-        name = f+"_"+l
-        c+=1
-      end
-      
-      where.define_method name.downcase do |*o,&b|
-        aa = where.ancestors
-        if aa.index(JSCBind::ObjectWithContext)
-          if this.arguments[0].type == :JSContextRef
-            o = [context,self].push(*o)
-          end
-        elsif aa.index(JSCBind::Object)
-          o = [self].push(*o)
-        end
-   
-        result = this.invoke(*o,&b)
-        if result.is_a?(JSCBind::ObjectWithContext)
-          if !result.context
-            result.set_context(o[0])
-          end
-        end
-        next result
-      end
-    end
-  end
-end  
-  
-#
-# -File- ./jsc_bind/object.rb
-#  
-  
-module JSCBind  
-  class Object < FFIBind::ObjectBase 
-    def self.libname()
-      unless @libname
-        gir = GirBind.gir
-        gir.require("WebKit")
-        libs = gir.shared_library("WebKit").split(",")
-        @libname = libs.first
-        if !@libname.index("lib")
-          @libname = "lib#{@libname}.so"
-        end
-      end
-      @libname
-    end   
-  
-    def self.add_function(*o)
-      o[1] = o[1].to_s
-      obj = nil
-      if o.last.is_a? Hash
-        obj = o.last
-        o[o.length-1] = :pointer
-      end
-      
-      f = JSCBind::Function.add_function(*o)
-      f.arguments.each do |a|
-        a.extend JSCBind::Argument
-      end
-      if obj
-        f.return_type.type = :object
-        f.return_type.object = obj[:object]
-      end
-      
-      return f
-    end
-  end
-end
-
-#
-# -file- ./jsc_bind/object_with_context.rb
-#
-
-module JSCBind
-  class ObjectWithContext < self::Object
-    attr_accessor :context
-    def set_context(ctx)
-      if !ctx.is_a?(JavaScriptCore::JSContext)
-        ctx = JavaScriptCore::JSContext.wrap(ctx)
-      end
-      
-      @context = ctx
-    end
-  end
 end
 
 #
@@ -355,8 +208,11 @@ module JS
     str = JSString.create_with_utf8_cstring(str)
     ec = JSValue.make_null(ctx)
     if jscheck_script_syntax(ctx,str,nil,0,ec.to_ptr.addr)
-      v=JSValue.wrap(jsevaluate_script(ctx,str,this,nil,0,nil))
+      v=JSValue.wrap(jsevaluate_script(ctx,str,this,nil,0,ec.to_ptr.addr))
       v.context = ctx
+      if eo=ec.to_ruby
+        puts eo[:message]
+      end
       return v.to_ruby
     else
       e = ec.to_ruby
@@ -436,20 +292,43 @@ module JS::Object
   end
 end
 
+
 module JS::ObjectIsFunction
   attr_accessor :this
+  FC = {}
   def call_as_function this,*o,&b
-    vary = o.map do |v| JS::JSValue.from_ruby(context,v) end
-    jary = CFunc::Pointer[vary.length]
-    vary.each_with_index do |v,i|
-      jary[i].value = v.to_ptr
+    FC[b] = true
+    
+    len = o.length
+    
+    if b
+      len += 1
+    end
+    
+    jary = CFunc::Pointer[len]
+    
+    o.each_with_index do |q,i| 
+      v = JS::JSValue.from_ruby(context,q).to_ptr
+      jary[i].value = v 
+    end
+    
+    if b
+      v = JS::JSValue.from_ruby(context,&b).to_ptr
+      jary[o.length].value = v 
     end
 
-    super(this,vary.length,jary,nil).to_ruby
+    err = JSValue.make_null(context)
+
+    q = super(this,len,jary,err).to_ruby
+    if eo=err.to_ruby
+      raise eo[:message]
+    end
+    return q
   end
     
   def call(*o,&b)
-    call_as_function this,*o,&b
+    FC[b] = b
+    return call_as_function this,*o,&b
   end
 end
 
@@ -457,13 +336,26 @@ class JS::JSObject
   o = ::Object.new
   o.extend FFI::Library
   o.callback(:JSObjectCallAsFunctionCallback,[:pointer,:pointer,:pointer,:pointer,:pointer,:pointer],:pointer)
-
+  o.typedef :int,:JSType
+    o.callback :JSObjectGetPropertyCallback,[:JSContextRef,:JSObjectRef,:JSStringRef,:pointer],:JSValueRef
+    o.callback :JSObjectSetPropertyCallback,[:JSContextRef,:JSObjectRef,:JSStringRef,:JSValueRef,:pointer],:bool
+    o.callback :JSObjectHasPropertyCallback,[:JSContextRef,:JSObjectRef,:JSStringRef],:bool
+    o.callback :JSObjectDeletePropertyCallback,[:JSContextRef,:JSObjectRef,:JSStringRef,:pointer],:bool
+    o.callback :JSObjectCallAsConstructorCallback,[:JSContextRef,:JSObjectRef,:pointer,:pointer],:JSValueRef
+    o.callback :JSObjectHasInstanceCallback,[:JSContextRef,:JSObjectRef,:JSValueRef,:pointer],:bool
+    o.callback :JSObjectConvertToTypeCallback,[:JSContextRef,:JSObjectRef,:JSType,:pointer],:JSValueRef
+    o.callback :JSObjectCallAsConstructorCallback,[:JSContextRef,:JSObjectRef,:size_t,:pointer,:pointer],:JSObjectRef
+    o.callback :JSObjectInitializeCallback,[:JSContextRef,:JSObjectRef,:pointer,:pointer],:JSValueRef
+    o.callback :JSObjectFinalizeCallback,[:JSObjectRef],:void
+    o.callback :JSObjectGetPropertyNamesCallback,[:JSContextRef,:JSObjectRef,:JSPropertyNameAccumulatorRef],:void  
   CALLBACKS = []
 
   class << self
     alias :_make_ :make
     def make ctx,cls = nil, q = nil
-      _make_ ctx,cls,q
+      ins = _make_ ctx,cls,q
+      
+      return ins
     end  
 
     alias :_make_function_with_callback_ :make_function_with_callback
@@ -490,11 +382,19 @@ class JS::JSObject
       end
     end  
   end
+  
   def initialize *o
     super
     extend JS::Object
     if is_function
       extend JS::ObjectIsFunction
+    end
+    
+    addr = CFunc::UInt16.get(to_ptr.addr)
+    
+    if ruby=RObject::OBJECT_STORE[addr]
+      extend RObject
+      self.ruby = ruby
     end
   end
   
@@ -514,7 +414,7 @@ end
 #
 
 class JS::JSValue
-  def self.from_ruby ctx,v
+  def self.from_ruby ctx,v=nil,&b
     if v == true or v == false
       return make_boolean(ctx,v)
     elsif v.is_a?(Numeric)
@@ -540,8 +440,13 @@ class JS::JSValue
     elsif v.is_a? Proc
       obj = JS::JSObject.make_function_with_callback(ctx,&v)
       return obj.to_value
+    elsif b
+      obj = JS::JSObject.make_function_with_callback(ctx,&b)
+      return obj.to_value
     elsif v == nil
       return make_undefined(ctx)
+    else
+      return RObject.make(ctx,v).to_value
     end
   end
   
@@ -593,3 +498,79 @@ class JS::JSString
   end
 end
 
+
+module JS
+    class JSClassDefinition < CFunc::Struct
+      define CFunc::Int, :version,
+		CFunc::Pointer, :attributes,
+		CFunc::Pointer, :className,
+		CFunc::Pointer, :parentClass,
+		CFunc::Pointer, :staticValues,
+		CFunc::Pointer, :staticFunctions,
+		CFunc::Pointer, :initialize,
+		CFunc::Pointer, :finalize,
+		CFunc::Pointer, :hasProperty,
+		CFunc::Pointer, :getProperty,
+		CFunc::Pointer, :setProperty,
+		CFunc::Pointer, :deleteProperty,
+		CFunc::Pointer, :getPropertyNames,
+		CFunc::Pointer, :callAsFunction, 
+		CFunc::Pointer, :callAsConstructor, 
+		CFunc::Pointer, :hasInstance,
+		CFunc::Pointer, :convertToType		
+    end		
+end
+
+module JS  
+  module RObject
+      OBJECT_STORE = {}
+      F = []
+	  CLASS_DEF = JSClassDefinition.new
+	  CLASS_DEF[:version] = 0
+	  
+	  CLASS_DEF[:getProperty] = RObjectGetProperty = CFunc::Closure.new(CFunc::Pointer,[CFunc::Pointer,CFunc::Pointer,CFunc::Pointer,CFunc::Pointer]) do |ctx,obj,name,err|
+		ctx = JSContext.wrap(ctx)
+		str = JSString.wrap(name)
+		name = str.to_s
+		addr = CFunc::UInt16.get(obj.addr)
+
+		undefined = JSValue.make_undefined(ctx)
+
+		if (ruby = OBJECT_STORE[addr])
+		  if ruby.respond_to?(name.to_sym)
+		      result = JSValue.from_ruby ctx do |*o|
+		        ruby.send(name,*o)
+		      end
+		  end
+        end
+		
+		if result
+		  next result.to_ptr
+        else
+	      next undefined.to_ptr
+	    end
+	  end
+	  
+	  RObjectClass = JSClass.create(CLASS_DEF.addr.value)  
+	  
+    def self.make(ctx,v=Object)
+      ins = JSObject.make(ctx,RObjectClass,nil)
+      ins.extend self
+      ins.mapped = {}
+      ins.ruby = v
+      addr = CFunc::UInt16.get(ins.to_ptr.addr)
+      OBJECT_STORE[addr] = v
+      ins.set_context ctx
+      ins
+    end
+    
+    
+    attr_accessor :mapped,:ruby
+  end
+end
+
+module JS
+  def self.make_context()
+    JS::JSGlobalContext.new(nil)
+  end
+end
