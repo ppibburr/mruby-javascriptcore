@@ -12,7 +12,7 @@ p obj.call("foo")
 
 obj = JS::JSObject.new(ctx,{:bar=>"quux"})
 p obj[:bar]
-
+gobj[:obj] = obj
 fun = Proc.new do |a,b|
   a+b
 end
@@ -48,6 +48,8 @@ foo = test[:bar].call(1,2) do |i|
   next(i*2)
 end
 p foo == 6
+
+p gobj[:obj] == gobj[:obj]
 
 50.times do |i|
   q += ctx.execute('this.bar(1,2,function(a) { return a*2; });',test)
