@@ -1,5 +1,7 @@
 GirBind.bind(:Gtk)
 
+JS::JSValue.set_return_array_objects_as_array()
+
 script = GLib.file_get_contents("jsGtk.js")[1]
 
 ctx = JS::make_context
