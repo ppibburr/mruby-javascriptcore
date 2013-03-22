@@ -20,6 +20,27 @@ module JS
 		end
 		return false
     end
+    
+    def self.use_method_missing
+      return true if @_use_method_missing_
+      @_use_method_missing_ = true
+        define_method :method_missing do |m,*o,&b|
+        m = m.to_s
+        if m[m.length-1] == "="
+          raise "Too many arguments" if o.length > 1 
+          next self[m[0..m.length-2]] = o[0]
+        else
+          f = self[m]
+          if f.is_a?(JS::JSObject) and f.is_function
+            next f.call(*o,&b)
+          end
+        
+          next f
+        end
+        
+        return true
+      end
+    end
   end
   
   module JS::ObjectIsNodeList
@@ -48,6 +69,8 @@ def assert(msg="",&b)
   raise "assertion: #{msg} failed." unless b.call()
   true
 end
+
+JS::Object.use_method_missing
 
 Gtk.init 0,[]
 
@@ -99,9 +122,34 @@ v.signal_connect("load-finished") do |view,frame|
     end.index(false)
   end
   
+  ele = list[0][:cloneNode].call(true)
+  gobj[:document][:body][:appendChild].call(ele)
+  
+  assert "The list has been ammended" do
+    list[:length] == 3
+  end
+  
+  assert "Ammended element has color red" do
+    list[2][:style][:backgroundColor] == "red"
+  end
+  
   assert "The script set onReady and calling it returns 'true'" do
     if fun=gobj[:onReady]
       next fun.call == true
+    end
+  end
+  
+  assert "JS::Object#method_mmissing work properly" do
+    begin
+      assert "method_missing returned property" do 
+        gobj.document.is_a?(JS::JSObject)
+      end
+      assert "method_missing invokes functions" do
+        gobj.onReady == true
+      end    
+      next(true)
+    rescue
+      next(false)
     end
   end
   
@@ -124,7 +172,7 @@ html = <<EOH
         
         onReady = function() {
           return(true);
-        };
+        }; // will be called from mruby in on-finished
       </script>
     </body>
   </html>

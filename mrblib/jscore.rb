@@ -479,6 +479,27 @@ module JS::Object
     end
     return false
   end
+  
+  def self.use_method_missing
+    return true if @_use_method_missing_
+    @_use_method_missing_ = true
+      define_method :method_missing do |m,*o,&b|
+      m = m.to_s
+      if m[m.length-1] == "="
+        raise "Too many arguments" if o.length > 1 
+        next self[m[0..m.length-2]] = o[0]
+      else
+        f = self[m]
+        if f.is_a?(JS::JSObject) and f.is_function
+          next f.call(*o,&b)
+        end
+      
+        next f
+      end
+      
+      return true
+    end
+  end  
 end
 
 module JS::ObjectIsArray
