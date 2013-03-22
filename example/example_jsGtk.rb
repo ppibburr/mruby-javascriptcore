@@ -1,17 +1,5 @@
 GirBind.bind(:Gtk)
 
-class JS::JSValue
-  alias :_to_ruby_ :to_ruby
-  def to_ruby
-    if is_object and (o=to_object(nil)).is_array
-      o.extend(JS::ObjectIsArray)
-      return o.to_a
-    end
-    
-    _to_ruby_
-  end
-end
-
 script = GLib.file_get_contents("jsGtk.js")[1]
 
 ctx = JS::make_context
