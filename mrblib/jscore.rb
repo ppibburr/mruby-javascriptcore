@@ -694,6 +694,22 @@ class JS::JSValue
       raise "JS::Value#to_ruby Conversion Error"
     end
   end
+  
+  def self.set_return_array_objects_as_array
+    return true if @_ary_as_ary_
+    @_ary_as_ary_ = true
+    alias :_to_ruby_ :to_ruby
+    def to_ruby
+      if is_object and (o=to_object(nil)).is_array
+        o.extend(JS::ObjectIsArray)
+        return o.to_a
+      end
+      
+      _to_ruby_
+    end  
+    
+    return true
+  end
 end
 
 #

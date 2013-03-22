@@ -166,10 +166,11 @@ assert (o=a[2]).is_a?(JS::JSObject)
 assert o[:bar] == 1
 assert a[3] == "string2"
 
+# Show off the json syntax
 gobj[:foo] = {
-  :bar=>1,
-  :quux=>{:moof=>[1,2]},
-   :fun => Proc.new do |i|
+  bar: 1,
+  quux: {moof: [1,2]},
+  fun: Proc.new do |i|
      next i*2
    end
 }
