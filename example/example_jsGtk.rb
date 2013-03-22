@@ -15,11 +15,7 @@ gobj[:gtkMain] = Proc.new do
 end
 
 gobj[:gtkMainQuit] = Proc.new do |*o|
-  p 9
-  GLib.timeout_add 200,300 do
     Gtk.main_quit;
-  end
-  next(nil)
 end
 
 gobj[:gtkInit] = Proc.new do |cnt,ary|

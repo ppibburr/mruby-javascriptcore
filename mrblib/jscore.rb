@@ -698,14 +698,14 @@ class JS::JSValue
   def self.set_return_array_objects_as_array
     return true if @_ary_as_ary_
     @_ary_as_ary_ = true
-    alias :_to_ruby_ :to_ruby
-    def to_ruby
+    alias_method :_to_ruby_, :to_ruby
+    define_method :to_ruby do
       if is_object and (o=to_object(nil)).is_array
         o.extend(JS::ObjectIsArray)
-        return o.to_a
+        next o.to_a
       end
       
-      _to_ruby_
+      next _to_ruby_
     end  
     
     return true
