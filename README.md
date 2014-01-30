@@ -45,7 +45,7 @@ jo[:c] = Proc.new do |ctx_, this, *o|
 end
 
 # call a function
-jo[:c].call(nil,1,2) #=> 3
+jo[:c].call(1,2) #=> 3
 
 # create a Object from a Hash
 jo[:d] = {
@@ -57,11 +57,11 @@ jo[:d] = {
 # properties as methods
 jo.d.foo
 jo.d.quux[2]
-jo.d.bar.call(nil, 1, 2, "foo")
+jo.d.bar.call(1, 2, "foo")
 
 # Prove JS can reach us
 JS.execute(cx, "function moof() {return 5;};this.bar(1,2,3,4,5,6);", jo.d)
 
 # And that we can reach JS
-p jo.moof.call()
+jo.moof.call()
 ```

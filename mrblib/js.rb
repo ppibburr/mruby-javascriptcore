@@ -5,7 +5,12 @@ module JS
   
   def self.execute(ctx, str, this=nil)
     jstr = JavaScriptCore::String.createWithUTF8CString(str)
-    JavaScriptCore::evaluateScript(ctx, jstr, this, nil, 0, nil)  
+    v=JavaScriptCore::evaluateScript(ctx, jstr, this, nil, 0, nil)  
+    JS::Value.to_ruby(v)
+  end
+  
+  module IsFunctionProperty
+    attr_accessor :this
   end
 
   module HasContext
@@ -110,23 +115,31 @@ module JS
     def []= k,v
       jstr = JavaScriptCore::String.createWithUTF8CString(k.to_s)
       jv = JS::Value.from_ruby(context, v)
+      
       setProperty(jstr, jv, 0, nil)
     end
     
     def [] k
       jstr = JavaScriptCore::String.createWithUTF8CString(k.to_s)
       jv = getProperty(jstr, nil)
-      JS::Value.to_ruby(jv)
+      q=JS::Value.to_ruby(jv)
+      
+      if q.is_a?(JS::Object)
+        q.extend JS::IsFunctionProperty
+        q.this = self
+      end
+      
+      return q
     end 
     
-    def call this=nil, *o
+    def call *o
       jva = FFI::MemoryPointer.new(:pointer, o.length)
-      
+
       jva.write_array_of_pointer(o.map do |q|
         JS::Value.from_ruby(context, q).to_ptr
       end)
       
-      JS::Value.to_ruby callAsFunction(this, o.length, jva, nil)
+      JS::Value.to_ruby callAsFunction(@this, o.length, jva, nil)
     end
     
     def self.to_value(o, ctx=nil)
