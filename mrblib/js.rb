@@ -11,7 +11,7 @@ module JS
   module HasContext
     def method! name, args, ret=:void, &b
       invoke = (Proc.new do |symbol, *o| 
-        o = [context].push(*o)
+        o = [context.to_ptr].push(*o)
         self.class.namespace.clib.send(symbol, *o)
       end)
 
@@ -20,7 +20,10 @@ module JS
     
     def self.extended q
       q.class_eval do
-        attr_accessor :context
+        attr_reader :context
+        def context= c
+          @context = c.is_a?(JavaScriptCore::Context) ? c : JavaScriptCore::GlobalContext.wrap(c)
+        end
       end
     end
   end
@@ -118,9 +121,11 @@ module JS
     
     def call this=nil, *o
       jva = FFI::MemoryPointer.new(:pointer, o.length)
+      
       jva.write_array_of_pointer(o.map do |q|
         JS::Value.from_ruby(context, q).to_ptr
       end)
+      
       JS::Value.to_ruby callAsFunction(this, o.length, jva, nil)
     end
     
@@ -147,9 +152,9 @@ module JS
         
       elsif o.is_a?(::Array)
         o = o.map do |q|
-          JS::Value.from_ruby(ctx, q)
+          JS::Value.from_ruby(ctx, q).to_ptr
         end
-      
+
         jva = FFI::MemoryPointer.new(:pointer, o.length)
         jva.write_array_of_pointer(o)
         return jo = JavaScriptCore::Object.makeArray(ctx, o.length, jva, nil)
@@ -187,7 +192,7 @@ end
 
 FFI::Helper.namespace :JavaScriptCore, "libjavascriptcoregtk-3.0.so.0" do
   const_set :ValueType, c=Class.new
-  
+
   [:undefined, :null, :boolean, :number, :string, :object].each_with_index do |n,i|
     c.const_set n.to_s.upcase, i
   end
@@ -195,7 +200,7 @@ FFI::Helper.namespace :JavaScriptCore, "libjavascriptcoregtk-3.0.so.0" do
 
   clib.typedef :uint, :JSClassAttributes
   clib.typedef :uint, :JSPropertyAttributes  
-  clib.enum :JSType, :undefined, :null, :boolean, :number, :string, :object
+  clib.enum :JSType, [:undefined, :null, :boolean, :number, :string, :object]
 
   object(:Class, :JSClassRef)
   object :Object, :JSObjectRef
@@ -369,43 +374,3 @@ FFI::Helper.namespace :JavaScriptCore, "libjavascriptcoregtk-3.0.so.0" do
     next(result)
   end
 end
-
-# Create a Context
-cx = JS.context
-
-# get the Context's global object
-jo = cx.getGlobalObject
-
-# set "a" to "f"
-jo[:a] = "f"
-jo[:a] #=> "f"
-
-# set "b" to 3.45
-jo[:b] = 3.45
-jo[:b] #=> 3.45
-
-# set "c" to a function (adds arg1 and arg2)
-jo[:c] = Proc.new do |ctx_, this, *o|
-  o[0] + o[1]
-end
-
-# call a function
-jo[:c].call(nil,1,2) #=> 3
-
-# create a Object from a Hash
-jo[:d] = {
-  :foo  => 3, # Number
-  :bar  => Proc.new do |ctx_, this, *args| puts "Called with #{args.length}, args." end, # function
-  :quux => [1,2,3] # Array
-}
-
-# properties as methods
-jo.d.foo
-jo.d.quux[2]
-jo.d.bar.call(nil, 1, 2, "foo")
-
-# Prove JS can reach us
-JS.execute(cx, "function moof() {return 5;};this.bar(1,2,3,4,5,6);", jo.d)
-
-# And that we can reach JS
-p jo.moof.call()

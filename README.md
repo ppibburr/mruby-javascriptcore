@@ -19,63 +19,48 @@ Features
 Requirements
 ===
 * [mruby](https://github.com/mruby/mruby)
-* [mruby-girffi](https://github.com/ppibburr/mruby-girffi) (GEM)
-
-build_config.rb
-===
-```ruby
-MRuby::Build.new do |conf|
-  # load specific toolchain settings
-  toolchain :gcc
-
-  # Use standard Math module
-  conf.gem 'mrbgems/mruby-math'
-
-  # Use standard Time class
-  conf.gem 'mrbgems/mruby-time'
-
-  # Use standard Struct class
-  conf.gem 'mrbgems/mruby-struct'
-
-  # Use standard Kernel#sprintf method
-  conf.gem 'mrbgems/mruby-sprintf'
-
-  # Generate binaries
-   conf.bins = %w(mrbc mruby mirb)
-
-  # Provides c function invocation / symbols
-  conf.gem :git => 'https://github.com/mobiruby/mruby-cfunc.git', :branch => 'master', :options => '-v'
-
-  # adds Class#allocate
-  conf.gem :git => 'https://github.com/ppibburr/mruby-allocate.git', :branch => 'master', :options => '-v'
-
-  # handles mapping from GObjectIntrospection and dsl mapping
-  conf.gem :git => 'https://github.com/ppibburr/mruby-girffi', :branch => 'master', :options => '-v'
-  
-  # bindings to javascript
-  conf.gem :git => 'https://github.com/ppibburr/mruby-javascriptcore', :branch => 'master', :options => '-v'  
-end
-```
+* [mruby-rubyffi-compat](https://github.com/ppibburr/mruby-rubyffi-compat) (GEM implementating a substantial subset of ruby-ffi)
 
 Example
 ===
 ```ruby
-ctx = JS::JSGlobalContext.create(nil)
-gobj = ctx.get_global_object
+# Create a Context
+cx = JS.context
+p cx
+# get the Context's global object
+jo = cx.getGlobalObject
 
-gobj[:puts] = Proc.new do |str|
-  puts "Hello #{str}! I'm Mruby"
+# set "a" to "f"
+jo[:a] = "f"
+jo[:a] #=> "f"
+
+# set "b" to 3.45
+jo[:b] = 3.45
+jo[:b] #=> 3.45
+
+# set "c" to a function (adds arg1 and arg2)
+jo[:c] = Proc.new do |ctx_, this, *o|
+  o[0] + o[1]
 end
 
-JS.execute_script(ctx,"puts('JavaScript');")
+# call a function
+jo[:c].call(nil,1,2) #=> 3
 
-JS.execute_script(ctx,"function hello(str) { return(\"Hello, \"+str+\"! I'm JavaScript\");};")
+# create a Object from a Hash
+jo[:d] = {
+  :foo  => 3, # Number
+  :bar  => Proc.new do |ctx_, this, *args| puts "Called with #{args.length}, args." end, # function
+  :quux => [1,2,3] # Array
+}
 
-puts gobj[:hello].call_as_function("MRuby")
-```
+# properties as methods
+jo.d.foo
+jo.d.quux[2]
+jo.d.bar.call(nil, 1, 2, "foo")
 
-```sh
-$ mruby example.rb
-Hello JavaScript! I'm Mruby
-Hello, MRuby! I'm JavaScript
+# Prove JS can reach us
+JS.execute(cx, "function moof() {return 5;};this.bar(1,2,3,4,5,6);", jo.d)
+
+# And that we can reach JS
+p jo.moof.call()
 ```
