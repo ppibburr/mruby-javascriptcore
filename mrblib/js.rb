@@ -6,6 +6,7 @@ module JS
   def self.execute(ctx, str, this=nil)
     jstr = JavaScriptCore::String.createWithUTF8CString(str)
     v=JavaScriptCore::evaluateScript(ctx, jstr, this, nil, 0, nil)  
+    #jstr.release
     JS::Value.to_ruby(v)
   end
   
@@ -35,17 +36,21 @@ module JS
   
   module String
     def self.get_string jstr
-      buff = FFI::MemoryPointer.new(:pointer)
-      l=jstr.getLength
-      jstr.getUTF8CString(buff,l+1)
+      l=jstr.getLength + 1    
+      buff = FFI::MemoryPointer.new(:int8,l)
+      jstr.getUTF8CString(buff,l)
     end
   end
   
   module Value
     def self.from_ruby ctx, v
       if v.is_a?(JavaScriptCore::Object)
-        return JS::Object.to_value(v)
+        v = JS::Object.to_value(v)
+        v.protect
+        return v
       elsif v.is_a?(JavaScriptCore::Value)
+        v.protect
+        return v
         return v
       end
     
@@ -55,7 +60,9 @@ module JS
         JavaScriptCore::Value::makeNumber(ctx, v)
       elsif v.is_a?(::String)
         jstr = JavaScriptCore::String.createWithUTF8CString(v)
-        JavaScriptCore::Value::makeString(ctx, jstr)
+        q=JavaScriptCore::Value::makeString(ctx, jstr)
+        jstr.release
+        q
       elsif v == true
         JavaScriptCore::Value::makeBoolean(ctx, v)
       elsif v == false
@@ -82,7 +89,9 @@ module JS
       
       jstr = v.toStringCopy
       
-      JS::String.get_string(jstr)
+      r=JS::String.get_string(jstr)
+      jstr.release
+      r
     end
     
     def self.to_ruby v, ctx=nil
@@ -116,7 +125,9 @@ module JS
       jstr = JavaScriptCore::String.createWithUTF8CString(k.to_s)
       jv = JS::Value.from_ruby(context, v)
       
-      setProperty(jstr, jv, 0, nil)
+      r=setProperty(jstr, jv, 0, nil)
+      jstr.release
+      r
     end
     
     def [] k
@@ -128,9 +139,13 @@ module JS
         q.extend JS::IsFunctionProperty
         q.this = self
       end
-      
+      jstr.release
       return q
     end 
+    
+    def toString
+      JS::execute(context, "Object.prototype.toString.call(this);",self)
+    end
     
     def call *o
       jva = FFI::MemoryPointer.new(:pointer, o.length)
@@ -150,7 +165,9 @@ module JS
       o.context ||= ctx    
     
       jstr = JavaScriptCore::String.createWithUTF8CString("this;")
-      JavaScriptCore::evaluateScript(ctx, jstr, o, nil, 0, nil)  
+      v=JavaScriptCore::evaluateScript(ctx, jstr, o, nil, 0, nil)  
+      jstr.release
+      v
     end
     
     def self.from_ruby ctx, o
@@ -249,6 +266,8 @@ FFI::Helper.namespace :JavaScriptCore, "libjavascriptcoregtk-3.0.so.0" do
       o[1].read_string
     end
     
+    function(:release, [], :void)
+    
     
     define_method :max_strlen do
       getMaximumUTF8CStringSize
@@ -290,6 +309,7 @@ FFI::Helper.namespace :JavaScriptCore, "libjavascriptcoregtk-3.0.so.0" do
       next result
     end    
             
+    method! :protect, [], :void        
     method!(:toBoolean, [], :bool)
     method!(:toNumber, [], :double)
     method!(:toStringCopy, [], JavaScriptCore::String)
