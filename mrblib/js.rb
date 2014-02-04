@@ -6,7 +6,7 @@ module JS
   def self.execute(ctx, str, this=nil)
     jstr = JavaScriptCore::String.createWithUTF8CString(str)
     v=JavaScriptCore::evaluateScript(ctx, jstr, this, nil, 0, nil)  
-    #jstr.release
+    jstr.release
     JS::Value.to_ruby(v)
   end
   
@@ -44,37 +44,51 @@ module JS
   
   module Value
     def self.from_ruby ctx, v
+      unless ctx.is_a?(JavaScriptCore::Context)
+        ctx = JavaScriptCore::GlobalContext.wrap(ctx)
+      end
+    
       if v.is_a?(JavaScriptCore::Object)
         v = JS::Object.to_value(v)
         v.protect
         return v
+      
       elsif v.is_a?(JavaScriptCore::Value)
         v.protect
-        return v
+
         return v
       end
     
       if v.is_a?(Integer)
         JavaScriptCore::Value::makeNumber(ctx, v.to_f)
+      
       elsif v.is_a?(Float)
         JavaScriptCore::Value::makeNumber(ctx, v)
+      
       elsif v.is_a?(::String)
         jstr = JavaScriptCore::String.createWithUTF8CString(v)
         q=JavaScriptCore::Value::makeString(ctx, jstr)
         jstr.release
-        q
+        return q
+        
       elsif v == true
         JavaScriptCore::Value::makeBoolean(ctx, v)
+      
       elsif v == false
         JavaScriptCore::Value::makeBoolean(ctx, v)
+      
       elsif v.is_a?(Proc)
         from_ruby(ctx, JS::Object.from_ruby(ctx, v))
+      
       elsif v.is_a?(Array)
         from_ruby(ctx, JS::Object.from_ruby(ctx, v))
+      
       elsif v.is_a?(Hash)
         from_ruby(ctx, JS::Object.from_ruby(ctx, v))
+      
       elsif !v
         JavaScriptCore::Value::makeNull(ctx)
+      
       else
         raise "JS::Value#initialize: Cannot initialize from #{v.class}"
       end
@@ -91,7 +105,7 @@ module JS
       
       r=JS::String.get_string(jstr)
       jstr.release
-      r
+      return r
     end
     
     def self.to_ruby v, ctx=nil
@@ -124,22 +138,23 @@ module JS
     def []= k,v
       jstr = JavaScriptCore::String.createWithUTF8CString(k.to_s)
       jv = JS::Value.from_ruby(context, v)
-      
-      r=setProperty(jstr, jv, 0, nil)
+      r=setProperty(jstr, jv, 0, nil.to_ptr)
       jstr.release
-      r
+      return r
     end
     
     def [] k
       jstr = JavaScriptCore::String.createWithUTF8CString(k.to_s)
-      jv = getProperty(jstr, nil)
+      jv = getProperty(jstr, nil.to_ptr)
       q=JS::Value.to_ruby(jv)
       
       if q.is_a?(JS::Object)
         q.extend JS::IsFunctionProperty
         q.this = self
       end
+      
       jstr.release
+      
       return q
     end 
     
@@ -154,7 +169,9 @@ module JS
         JS::Value.from_ruby(context, q).to_ptr
       end)
       
-      JS::Value.to_ruby callAsFunction(@this, o.length, jva, nil)
+      r=callAsFunction(@this, o.length, jva, nil.to_ptr)
+
+      JS::Value.to_ruby r
     end
     
     def self.to_value(o, ctx=nil)
@@ -165,9 +182,11 @@ module JS
       o.context ||= ctx    
     
       jstr = JavaScriptCore::String.createWithUTF8CString("this;")
-      v=JavaScriptCore::evaluateScript(ctx, jstr, o, nil, 0, nil)  
+      v=JavaScriptCore::evaluateScript(ctx, jstr, o, nil, 0, nil.to_ptr)  
+      
       jstr.release
-      v
+      
+      return v
     end
     
     def self.from_ruby ctx, o
@@ -187,10 +206,11 @@ module JS
 
         jva = FFI::MemoryPointer.new(:pointer, o.length)
         jva.write_array_of_pointer(o)
+        
         return jo = JavaScriptCore::Object.makeArray(ctx, o.length, jva, nil)
       
       elsif o.is_a?(Proc)
-        return jo = JavaScriptCore::Object.makeFunctionWithCallback(ctx, nil) do |ctx_, fun, this, len, args, e|
+        jo = JavaScriptCore::Object.makeFunctionWithCallback(ctx, nil) do |ctx_, fun, this, len, args, e|
           ctx_ = JavaScriptCore::GlobalContext.wrap(ctx_)
           this = JavaScriptCore::Object.wrap(this)
           this.context = ctx_
@@ -202,9 +222,11 @@ module JS
           end
           
           result = o.call(ctx_,this,*a)
+
           JS::Value.from_ruby(ctx_, result).to_ptr
         end
-      
+
+        return jo
       else
         raise "Cannot make Object from #{o.class}"
       end
@@ -220,190 +242,392 @@ module JS
   end
 end
 
-FFI::Helper.namespace :JavaScriptCore, "libjavascriptcoregtk-3.0.so.0" do
-  const_set :ValueType, c=Class.new
-
-  [:undefined, :null, :boolean, :number, :string, :object].each_with_index do |n,i|
-    c.const_set n.to_s.upcase, i
-  end
-
-
-  clib.typedef :uint, :JSClassAttributes
-  clib.typedef :uint, :JSPropertyAttributes  
-  clib.enum :JSType, [:undefined, :null, :boolean, :number, :string, :object]
-
-  object(:Class, :JSClassRef)
-  object :Object, :JSObjectRef
-  object(:Value, :JSValueRef)
-
-  interface :Context, :JSContextRef do
-    function_symbol do |name|
-      name[0] = name[0].capitalize    
-      :"JSContext#{name}"
-    end
-    
-    function(:getGlobalObject, [] , JavaScriptCore::Object) do |result, *o|
-      result.context = o[0]
-      next(result)
+module JavaScriptCore
+  class ValueType
+    [:undefined, :null, :boolean, :number, :string, :object].each_with_index do |n,i|
+      const_set n.to_s.upcase, i
     end
   end
+  
+  module Lib
+    extend FFI::Library
+    ffi_lib "libjavascriptcoregtk-3.0.so.0"
 
-  clib.callback :JSObjectInitializeCallback, [], :void
-  clib.callback :JSObjectCallAsFunctionCallback, [:JSContextRef, :JSObjectRef, :JSObjectRef, :size_t, :pointer, :pointer], :JSValueRef 
-  
-  object :String, :JSStringRef do
-    function_symbol do |name|
-      name[0] = name[0].capitalize    
-      :"JSString#{name}"
-    end  
-  
-    constructor :createWithUTF8CString, :string
+
+    typedef :uint, :JSClassAttributes
+    typedef :uint, :JSPropertyAttributes  
+
+    typedef :pointer, :JSObjectRef
+    typedef :pointer, :JSValueRef
+    typedef :pointer, :JSStringRef
+    typedef :pointer, :JSClassRef
+    typedef :pointer, :JSGlobalContextRef
+    typedef :pointer, :JSContextRef
+    typedef :pointer, :JSPropertyNameArrayRef    
+    typedef :uint, :unsigned
+    typedef :pointer, :JSPropertyNameAccumulatorRef
+                    
+    enum :JSType, [:undefined, :null, :boolean, :number, :string, :object]
+
+    callback :JSObjectGetPropertyCallback,[:JSContextRef,:JSObjectRef,:JSStringRef,:pointer],:JSValueRef
+    callback :JSObjectSetPropertyCallback,[:JSContextRef,:JSObjectRef,:JSStringRef,:JSValueRef,:pointer],:bool
+    callback :JSObjectHasPropertyCallback,[:JSContextRef,:JSObjectRef,:JSStringRef],:bool
+    callback :JSObjectDeletePropertyCallback,[:JSContextRef,:JSObjectRef,:JSStringRef,:pointer],:bool
+    callback :JSObjectCallAsConstructorCallback,[:JSContextRef,:JSObjectRef,:pointer,:pointer],:JSValueRef
+    callback :JSObjectHasInstanceCallback,[:JSContextRef,:JSObjectRef,:JSValueRef,:pointer],:bool
+    callback :JSObjectConvertToTypeCallback,[:JSContextRef,:JSObjectRef,:JSType,:pointer],:JSValueRef
+    callback :JSObjectCallAsConstructorCallback,[:JSContextRef,:JSObjectRef,:size_t,:pointer,:pointer],:JSObjectRef
+    callback :JSObjectInitializeCallback,[:JSContextRef,:JSObjectRef,:pointer,:pointer],:JSValueRef
+    callback :JSObjectFinalizeCallback,[:JSObjectRef],:void
+    callback :JSObjectGetPropertyNamesCallback,[:JSContextRef,:JSObjectRef,:JSPropertyNameAccumulatorRef],:void
+    callback :JSObjectInitializeCallback, [], :void
+    callback :JSObjectCallAsFunctionCallback, [:JSContextRef, :JSObjectRef, :JSObjectRef, :size_t, :pointer, :pointer], :JSValueRef 
+    callback :JSObjectGetPropertyCallback, [:JSContextRef, :JSObjectRef, :JSStringRef, :pointer], :JSValueRef
     
-    function(:getMaximumUTF8CStringSize, [], :int)
-    function(:getLength,[], :int)
+    attach_function :JSGlobalContextCreate, [:pointer], :pointer
+    attach_function :JSContextGetGlobalObject, [:pointer], :pointer    
+    attach_function :JSEvaluateScript, [:pointer, :pointer, :pointer, :pointer, :int ,:pointer], :pointer
+    attach_function :JSStringCreateWithUTF8CString, [:string], :pointer
     
-    function(:getUTF8CString, [:pointer, :size_t], :size_t) do |result, *o|
-      o[1].read_string
+    attach_function :JSValueMakeUndefined,[:JSContextRef],:JSValueRef
+    attach_function :JSValueMakeNull,[:JSContextRef],:JSValueRef
+    attach_function :JSValueMakeBoolean,[:JSContextRef,:bool],:JSValueRef
+    attach_function :JSValueMakeNumber,[:JSContextRef,:double],:JSValueRef
+    attach_function :JSValueMakeString,[:JSContextRef,:JSStringRef],:JSValueRef
+    attach_function :JSValueGetType,[:JSContextRef,:JSValueRef],:int
+    attach_function :JSValueIsUndefined,[:JSContextRef,:JSValueRef],:bool
+    attach_function :JSValueIsNull,[:JSContextRef,:JSValueRef],:bool
+    attach_function :JSValueIsBoolean,[:JSContextRef,:JSValueRef],:bool
+    attach_function :JSValueIsNumber,[:JSContextRef,:JSValueRef],:bool
+    attach_function :JSValueIsString,[:JSContextRef,:JSValueRef],:bool
+    attach_function :JSValueIsObject,[:JSContextRef,:JSValueRef],:bool
+    attach_function :JSValueIsObjectOfClass,[:JSContextRef,:JSValueRef,:JSClassRef],:bool
+    attach_function :JSValueIsEqual,[:JSContextRef,:JSValueRef,:JSValueRef,:pointer],:bool
+    attach_function :JSValueIsStrictEqual,[:JSContextRef,:JSValueRef,:JSValueRef],:bool
+    attach_function :JSValueIsInstanceOfConstructor,[:JSContextRef,:JSValueRef,:JSObjectRef,:pointer],:bool
+    attach_function :JSValueToBoolean,[:JSContextRef,:JSValueRef],:bool
+    attach_function :JSValueToNumber,[:JSContextRef,:JSValueRef,:pointer],:double
+    attach_function :JSValueToStringCopy,[:JSContextRef,:JSValueRef,:pointer],:JSStringRef    
+    attach_function :JSValueToObject,[:JSContextRef,:JSValueRef,:pointer],:JSObjectRef
+    attach_function :JSValueProtect,[:JSContextRef,:JSValueRef],:void
+    attach_function :JSValueUnprotect,[:JSContextRef,:JSValueRef],:void
+    
+    attach_function :JSStringCreateWithCharacters,[:pointer,:size_t],:JSStringRef
+    attach_function :JSStringRetain,[:JSStringRef],:JSStringRef
+    attach_function :JSStringRelease,[:JSStringRef],:void
+    attach_function :JSStringGetLength,[:JSStringRef],:size_t
+    attach_function :JSStringGetCharactersPtr,[:JSStringRef],:pointer
+    attach_function :JSStringGetMaximumUTF8CStringSize,[:JSStringRef],:size_t
+    attach_function :JSStringGetUTF8CString,[:JSStringRef,:pointer,:size_t],:void
+    attach_function :JSStringIsEqual,[:JSStringRef,:JSStringRef],:bool
+    attach_function :JSStringIsEqualToUTF8CString,[:JSStringRef,:pointer],:bool    
+        
+    attach_function :JSObjectMake,[:JSContextRef,:JSClassRef,:pointer],:JSObjectRef
+    attach_function :JSObjectMakeFunctionWithCallback,[:JSContextRef,:JSStringRef,:JSObjectCallAsFunctionCallback],:JSObjectRef
+    attach_function :JSObjectMakeConstructor,[:JSContextRef,:JSClassRef,:pointer],:JSObjectRef
+    attach_function :JSObjectMakeArray,[:JSContextRef,:size_t,:JSValueRef,:pointer],:JSObjectRef
+    attach_function :JSObjectMakeFunction,[:JSContextRef,:JSStringRef,:unsigned,:JSStringRef,:JSStringRef,:JSStringRef,:int,:pointer],:JSObjectRef
+    attach_function :JSObjectGetPrototype,[:JSContextRef,:JSObjectRef],:JSValueRef
+    attach_function :JSObjectSetPrototype,[:JSContextRef,:JSObjectRef,:JSValueRef],:void
+    attach_function :JSObjectHasProperty,[:JSContextRef,:JSObjectRef,:JSStringRef],:bool
+    attach_function :JSObjectGetProperty,[:JSContextRef,:JSObjectRef,:JSStringRef,:pointer],:JSValueRef
+    attach_function :JSObjectSetProperty,[:JSContextRef,:JSObjectRef,:JSStringRef,:JSValueRef,:int,:pointer],:void
+    attach_function :JSObjectDeleteProperty,[:JSContextRef,:JSObjectRef,:JSStringRef,:pointer],:bool
+    attach_function :JSObjectGetPropertyAtIndex,[:JSContextRef,:JSObjectRef,:unsigned,:pointer],:JSValueRef
+    attach_function :JSObjectSetPropertyAtIndex,[:JSContextRef,:JSObjectRef,:unsigned,:JSValueRef,:pointer],:void
+    attach_function :JSObjectGetPrivate,[:JSObjectRef],:pointer
+    attach_function :JSObjectSetPrivate,[:JSObjectRef,:pointer],:bool
+    attach_function :JSObjectIsFunction,[:JSContextRef,:JSObjectRef],:bool
+    attach_function :JSObjectCallAsFunction,[:JSContextRef,:JSObjectRef,:JSObjectRef,:size_t,:JSValueRef,:pointer],:JSValueRef
+    attach_function :JSObjectIsConstructor,[:JSContextRef,:JSObjectRef],:bool
+    attach_function :JSObjectCallAsConstructor,[:JSContextRef,:JSObjectRef,:size_t,:JSValueRef,:pointer],:JSObjectRef
+    attach_function :JSObjectCopyPropertyNames,[:JSContextRef,:JSObjectRef],:JSPropertyNameArrayRef    
+    
+    class ClassDef < FFI::Struct
+      layout(:version, :int,
+        :attributes,  :uint,
+        :className, :pointer,
+        :parentClass, :pointer,
+        :staticValues, :pointer,
+        :staticFunctions, :pointer,
+        :initialize, :pointer,
+        :finalize, :pointer,
+        :hasProperty, :pointer,
+        :getProperty, :JSObjectGetPropertyCallback,
+        :setProperty, :pointer,
+        :deleteProperty, :pointer,
+        :getPropertyNames, :pointer,
+        :callAsFunction, :pointer,
+        :callAsConstructor, :pointer,
+        :hasInstance, :pointer,
+        :convertToType, :pointer)
+    end     
+  end
+
+  module ObjectBaseClass
+    def self.extended q
+      q.class_eval do
+        include ObjectBase
+      end
     end
     
-    function(:release, [], :void)
+    def wrap ptr
+      ins = allocate
+      ins.instance_variable_set("@ptr", ptr)
+      return ins
+    end
+  end
+  
+  module ObjectBase
+    def to_ptr
+      @ptr
+    end
+  end
+
+  module Context
+    def getGlobalObject
+      ptr = JavaScriptCore::Lib::JSContextGetGlobalObject(self.to_ptr)
+      result = JavaScriptCore::Object.wrap(ptr)
+      
+      result.context = self
+      
+      return result
+    end
+  end
+
+  class GlobalContext
+    extend ObjectBaseClass
+    include Context
+    
+    def self.create cls=nil
+      wrap(JavaScriptCore::Lib::JSGlobalContextCreate(cls.to_ptr))
+    end
+  end
+  
+  class self::String
+    extend ObjectBaseClass
+   
+    def self.createWithUTF8CString str
+      ptr = JavaScriptCore::Lib::JSStringCreateWithUTF8CString(str)
+      
+      result = JavaScriptCore::String.wrap(ptr)
+      
+      return result
+    end
+    
+    def getMaximumUTF8CStringSize
+      JavaScriptCore::Lib::JSStringGetMaximumUTF8CStringSize(self.to_ptr)
+    end
+    
+    def getLength
+      JavaScriptCore::Lib::JSStringGetLength(self.to_ptr)
+    end
+    
+    def getUTF8CString ptr=FFI::MemoryPointer.new(:int8, getLength+1),l=getLength+1
+      JavaScriptCore::Lib::JSStringGetUTF8CString(self.to_ptr, ptr, l)
+      return ptr.read_string
+    end
+    
+    def release
+      JavaScriptCore::Lib::JSStringRelease(self.to_ptr)
+    end
     
     
     define_method :max_strlen do
       getMaximumUTF8CStringSize
     end
   end   
-  
-  JavaScriptCore::Value.describe do
+
+  class Value
+    extend JavaScriptCore::ObjectBaseClass
     extend JS::HasContext
     include JS::Value
-    
-    
-    function_symbol do |name|
-      name[0] = name[0].capitalize    
-      :"JSValue#{name}"
-    end  
   
-    constructor :makeBoolean, JavaScriptCore::Context, :bool do |result, *o|
-      result.context = o[0]
-      next result
-    end
+    def self.makeBoolean ctx, bool
+      ptr = JavaScriptCore::Lib.JSValueMakeBoolean(ctx.to_ptr, bool)
+    
+      result = JavaScriptCore::Value.wrap(ptr)
+    
+      result.context = ctx
+      
+      return result
+    end   
+    
+    def self.makeNumber ctx, num
+      ptr = JavaScriptCore::Lib.JSValueMakeNumber(ctx.to_ptr, num.to_f)
+    
+      result = JavaScriptCore::Value.wrap(ptr)
 
-    constructor :makeNumber, JavaScriptCore::Context, :double do |result, *o|
-      result.context = o[0]
-      next result
+      result.context = ctx
+      
+      return result
+    end   
+    
+    def self.makeString ctx, jstr
+      ptr = JavaScriptCore::Lib.JSValueMakeString(ctx.to_ptr, jstr)
+    
+      result = JavaScriptCore::Value.wrap(ptr)
+    
+      result.context = ctx
+      
+      return result
+    end   
+    
+    def self.makeNull ctx
+      ptr = JavaScriptCore::Lib.JSValueMakeNull(ctx.to_ptr)
+    
+      result = JavaScriptCore::Value.wrap(ptr)
+    
+      result.context = ctx
+      
+      return result
+    end   
+    
+    def self.makeUndefined ctx
+      ptr = JavaScriptCore::Lib.JSValueMakeUndefined(ctx.to_ptr)
+    
+      result = JavaScriptCore::Value.wrap(ptr)
+    
+      result.context = ctx
+      
+      return result
+    end  
+            
+    def protect
+      JavaScriptCore::Lib.JSValueProtect(context.to_ptr, self.to_ptr)
+    end 
+        
+    def toBoolean err=FFI::Pointer::NULL
+      JavaScriptCore::Lib.JSValueToBoolean(context.to_ptr, self.to_ptr, err)
     end
     
-    constructor :makeString, JavaScriptCore::Context, JavaScriptCore::String  do |result, *o|
-      result.context = o[0]
-      next result
+    def toNumber err=FFI::Pointer::NULL
+      JavaScriptCore::Lib.JSValueToNumber(context.to_ptr, self.to_ptr, err)
     end    
     
-    constructor :makeNull, JavaScriptCore::Context do |result, *o|
-      result.context = o[0]
-      next result
-    end    
+    def toStringCopy err=FFI::Pointer::NULL
+      JavaScriptCore::Lib.JSValueToCopy(context.to_ptr, self.to_ptr, err)
+    end
     
-    constructor :makeUndefined, JavaScriptCore::Context do |result, *o|
-      result.context = o[0]
-      next result
-    end    
-            
-    method! :protect, [], :void        
-    method!(:toBoolean, [], :bool)
-    method!(:toNumber, [], :double)
-    method!(:toStringCopy, [], JavaScriptCore::String)
-    
-    method!(:toObject, [], JavaScriptCore::Object) do |result, *o|
+    def toObject err=FFI::Pointer::NULL
+      ptr = JavaScriptCore::Lib::JSValueToObject(context.to_ptr, self.to_ptr, err)
+      result = JavaScriptCore::Object.wrap(ptr)
       result.context = context
-      next(result)
+      return(result)
     end
         
-    method!(:getType, [], :int)
+    def getType
+      JavaScriptCore::Lib.JSValueGetType(context.to_ptr, self.to_ptr)
+    end
   end
   
-  struct(:ClassDef, :JSClassDef,
-                    :version => :int,
-                    :attributes => :uint,
-                    :className => :string,
-                    :parentClass => :pointer,
-                    :staticValues => :pointer,
-                    :staticFunctions => :pointer,
-                    :initialize => :pointer,
-                    :finalize => :pointer,
-                    :hasProperty => :pointer,
-                    :getProperty => :pointer,
-                    :setProperty => :pointer,
-                    :deleteProperty => :pointer,
-                    :getPropertyNames => :pointer,
-                    :callAsFunction => :pointer,
-                    :callAsConstructor => :pointer,
-                    :hasInstance => :pointer,
-                    :convertToType => :pointer)
-
-  JavaScriptCore::Class.describe do |klass|
-    function_symbol do |name|
-      name[0] = name[0].capitalize    
-      :"JSClass#{name}"
-    end
-      
-    constructor(:create, JavaScriptCore::ClassDef)
-  end
-
-  object :GlobalContext, :JSGlobalContextRef do |klass|
-    include JavaScriptCore::Context
+  ClassDef = self::Lib::ClassDef
   
-    function_symbol do |name|
-      name[0] = name[0].capitalize    
-      :"JSGlobalContext#{name}"
-    end  
-  
-    constructor(:create, JavaScriptCore::Class)
-  end  
-  
-  JavaScriptCore::Object.describe do
-    function_symbol do |name|
-      name[0] = name[0].capitalize
-      :"JSObject#{name}"
-    end
-    
+  class self::Object
+    extend ObjectBaseClass
     extend JS::HasContext
     include JS::Object
     
-    constructor(:make, JavaScriptCore::GlobalContext, JavaScriptCore::Class, :pointer) do |result, ctx, *o|
+    def self.make ctx, cls=nil, data = FFI::Pointer::NULL
+      ptr = JavaScriptCore::Lib.JSObjectMake(ctx.to_ptr, cls.to_ptr, data)
+      result = wrap(ptr)
       result.context= ctx
-      next(result)
+      return(result)
     end
     
-    constructor :makeFunctionWithCallback, JavaScriptCore::GlobalContext, JavaScriptCore::String, {:callback=>:JSObjectCallAsFunctionCallback} do |result, ctx, *o|
-      result.context = ctx
-      next(result)
+    def self.makeFunctionWithCallback ctx, name, &b
+      ptr = JavaScriptCore::Lib.JSObjectMakeFunctionWithCallback(ctx.to_ptr, name.to_ptr, b)
+      result = wrap(ptr)
+      result.context= ctx
+      return(result)
     end
     
-    constructor :makeArray, JavaScriptCore::GlobalContext, :size_t, :pointer, :pointer do |result, ctx, *o|
-      result.context = ctx
-      next result
+    def self.makeArray ctx, size, ary, err=FFI::Pointer::NULL
+      ptr = JavaScriptCore::Lib.JSObjectMakeArray(ctx.to_ptr, size, ary, err)
+      result = wrap(ptr)
+      result.context= ctx
+      return(result)
     end
     
-    method!(:setProperty, [JavaScriptCore::String, JavaScriptCore::Value, :JSPropertyAttributes, :pointer])
-    method!(:getProperty, [JavaScriptCore::String, :pointer], JavaScriptCore::Value) do |result, *o|
-      result.context= context
-      next result
+    def setProperty name, value, attr=0, err=FFI::Pointer::NULL
+      JavaScriptCore::Lib.JSObjectSetProperty(context.to_ptr, self.to_ptr, name.to_ptr, value.to_ptr, attr, err)
+    end
+    
+    def getProperty name, err=FFI::Pointer::NULL
+      ptr = JavaScriptCore::Lib.JSObjectGetProperty(context.to_ptr, self.to_ptr, name.to_ptr, err)
+      result = JavaScriptCore::Value.wrap(ptr)
+      result.context = context
+      return result
     end  
     
-    method! :callAsFunction, [JavaScriptCore::Object, :size_t, :pointer, :pointer], JavaScriptCore::Value do |result, *o|
+    def callAsFunction this, argc, argv, err=FFI::Pointer::NULL
+      ptr = JavaScriptCore::Lib.JSObjectCallAsFunction(context.to_ptr, self.to_ptr, this.to_ptr, argc, argv, err)
+      result = JavaScriptCore::Value.wrap(ptr)
       result.context = context
-      next result
+      return result
     end
   end
   
-  function_symbol do |name|
-    name[0] = name[0].upcase
-    :"JS#{name}"
+  def self.evaluateScript ctx, code, this=nil, url=nil, line=0, err=FFI::Pointer::NULL
+    ptr = JavaScriptCore::Lib.JSEvaluateScript(ctx.to_ptr, code.to_ptr, this.to_ptr, url.to_ptr, line, err)
+    result = JavaScriptCore::Value.wrap(ptr)
+    result.context = ctx
+    return result
   end
   
-  function(:evaluateScript, [self::Context, self::String, self::Object, self::String, :int, :pointer], self::Value, :class) do |result, ctx, *o|
-    result.context = ctx
-    next(result)
+  class self::Class
+    extend ObjectBaseClass
+  
+    def self.create class_def
+      ptr = JavaScriptCore::Lib::JSClassCreate(class_def)
+      wrap(ptr)
+    end
+  end  
+end
+
+JavaScriptCore::Lib.attach_function :JSClassCreate, [JavaScriptCore::ClassDef], :pointer
+
+class NilClass
+  def to_ptr
+    FFI::Pointer::NULL
+  end
+end
+
+module JS
+  module RObject
+    CLASS_DEF = JavaScriptCore::ClassDef.new
+    
+    CLASS_DEF.class.members.each do |m|
+      CLASS_DEF[m] = FFI::Pointer::NULL unless [:className, :version, :attributes, :getProperty].index m.to_sym
+    end
+    
+    CLASS_DEF[:version] = 0
+
+    CLASS_DEF[:getProperty] = FFI::Closure.new([:pointer,:pointer,:pointer,:pointer], :pointer) do |ctx, object, prop_name, error|
+      result = nil
+    
+      if (ruby=ObjectMap[object.address])
+        name = JS::String.get_string(JavaScriptCore::String.wrap(prop_name))
+
+        if ruby.respond_to?(name) or ::Kernel.methods.index(name.to_sym)
+          result = Proc.new do |ctx_,this,*o|         
+            ruby.send name, *o
+          end
+        end
+      end
+
+      next JS::Value.from_ruby(JavaScriptCore::GlobalContext.wrap(ctx), result).to_ptr
+    end
+    
+    ObjectClass = JavaScriptCore::Class.create(CLASS_DEF)
+
+    ObjectMap = {}
+    
+    def self.make ctx, ruby=::Object
+      o = JavaScriptCore::Object.make ctx, ObjectClass
+      ObjectMap[o.to_ptr.address] = ruby
+      
+      return o    
+    end
   end
 end
