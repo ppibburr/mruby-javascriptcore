@@ -76,7 +76,7 @@ class MyObject
   end
 end
 
-ro = JS::RObject.make(ctx, MyObject.new())
-ctx.getGlobalObject[:myObj] = ro
-JS::execute ctx, "myObj.bang(); myObj.foo();" #=> 1.0
+ro = JS::RObject.make(cx, MyObject.new())
+cx.getGlobalObject[:myObj] = ro
+JS::execute cx, "myObj.bang(); myObj.foo();" #=> 1.0
 ```
