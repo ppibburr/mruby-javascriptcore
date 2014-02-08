@@ -1,3 +1,11 @@
+unless FFI.const_defined? :Closure
+  class FFI::Closure < FFI::Function
+    def initialize a,rt,&b
+      super rt,a,&b
+    end
+  end
+end
+
 module JS
   def self.context
     JavaScriptCore::GlobalContext.create(nil)
@@ -5,7 +13,7 @@ module JS
   
   def self.execute(ctx, str, this=nil)
     jstr = JavaScriptCore::String.createWithUTF8CString(str)
-    v=JavaScriptCore::evaluateScript(ctx, jstr, this, nil, 0, nil)  
+    v=JavaScriptCore::evaluateScript(ctx, jstr, this, nil, 0, nil.to_ptr) 
     jstr.release
     JS::Value.to_ruby(v)
   end
@@ -14,16 +22,7 @@ module JS
     attr_accessor :this
   end
 
-  module HasContext
-    def method! name, args, ret=:void, &b
-      invoke = (Proc.new do |symbol, *o| 
-        o = [context.to_ptr].push(*o)
-        self.class.namespace.clib.send(symbol, *o)
-      end)
-
-      function(name, [JavaScriptCore::Context].push(*args), ret, nil, invoke, &b)
-    end
-    
+  module HasContext    
     def self.extended q
       q.class_eval do
         attr_reader :context
@@ -156,13 +155,35 @@ module JS
       jstr.release
       
       return q
-    end 
+    end
+    
+    def properties
+      pa = copyPropertyNames
+      
+      a = []
+      
+      for i in 0..pa.getCount-1
+        a << pa.getNameAtIndex(i)
+      end
+      
+      pa.release
+      
+      return a
+    end
+    
+    def each_property &b
+      properties.each do |prop| yield prop end
+    end
     
     def toString
       JS::execute(context, "Object.prototype.toString.call(this);",self)
     end
     
-    def call *o
+    def call *o, &b
+      if b
+        o << JS::Object.from_ruby(context, b)
+      end
+    
       jva = FFI::MemoryPointer.new(:pointer, o.length)
 
       jva.write_array_of_pointer(o.map do |q|
@@ -191,8 +212,8 @@ module JS
     
     def self.from_ruby ctx, o
       if o.is_a?(Hash)
-        jo = JavaScriptCore::Object.make(ctx, nil, nil)
-        
+        jo = JavaScriptCore::Object.make(ctx, nil, nil.to_ptr)
+
         o.keys.each do |k|
           jo[k] = o[k]
         end
@@ -201,13 +222,13 @@ module JS
         
       elsif o.is_a?(::Array)
         o = o.map do |q|
-          JS::Value.from_ruby(ctx, q).to_ptr
+          v=JS::Value.from_ruby(ctx, q).to_ptr
         end
 
         jva = FFI::MemoryPointer.new(:pointer, o.length)
         jva.write_array_of_pointer(o)
         
-        return jo = JavaScriptCore::Object.makeArray(ctx, o.length, jva, nil)
+        return jo = JavaScriptCore::Object.makeArray(ctx, o.length, jva, nil.to_ptr)
       
       elsif o.is_a?(Proc)
         jo = JavaScriptCore::Object.makeFunctionWithCallback(ctx, nil) do |ctx_, fun, this, len, args, e|
@@ -343,6 +364,10 @@ module JavaScriptCore
     attach_function :JSObjectCallAsConstructor,[:JSContextRef,:JSObjectRef,:size_t,:JSValueRef,:pointer],:JSObjectRef
     attach_function :JSObjectCopyPropertyNames,[:JSContextRef,:JSObjectRef],:JSPropertyNameArrayRef    
     
+    attach_function :JSPropertyNameArrayGetCount, [:JSPropertyNameArrayRef ], :int
+    attach_function :JSPropertyNameArrayGetNameAtIndex, [:JSPropertyNameArrayRef, :int ], :JSStringRef
+    attach_function :JSPropertyNameArrayRelease, [:JSPropertyNameArrayRef], :void
+    
     class ClassDef < FFI::Struct
       layout(:version, :int,
         :attributes,  :uint,
@@ -402,6 +427,24 @@ module JavaScriptCore
     def self.create cls=nil
       wrap(JavaScriptCore::Lib::JSGlobalContextCreate(cls.to_ptr))
     end
+  end
+  
+  class PropertyNameArray
+    extend ObjectBaseClass
+    
+    def getCount
+      JavaScriptCore::Lib::JSPropertyNameArrayGetCount(to_ptr)
+    end
+    
+    def getNameAtIndex idx
+      ptr = JavaScriptCore::Lib::JSPropertyNameArrayGetNameAtIndex(to_ptr, idx)
+      result = JavaScriptCore::String.wrap(ptr)
+      return JS::String.get_string(result)
+    end  
+    
+    def release
+      JavaScriptCore::Lib::JSPropertyNameArrayRelease(to_ptr)
+    end  
   end
   
   class self::String
@@ -464,7 +507,7 @@ module JavaScriptCore
     end   
     
     def self.makeString ctx, jstr
-      ptr = JavaScriptCore::Lib.JSValueMakeString(ctx.to_ptr, jstr)
+      ptr = JavaScriptCore::Lib.JSValueMakeString(ctx.to_ptr, jstr.to_ptr)
     
       result = JavaScriptCore::Value.wrap(ptr)
     
@@ -497,8 +540,8 @@ module JavaScriptCore
       JavaScriptCore::Lib.JSValueProtect(context.to_ptr, self.to_ptr)
     end 
         
-    def toBoolean err=FFI::Pointer::NULL
-      JavaScriptCore::Lib.JSValueToBoolean(context.to_ptr, self.to_ptr, err)
+    def toBoolean
+      JavaScriptCore::Lib.JSValueToBoolean(context.to_ptr, self.to_ptr)
     end
     
     def toNumber err=FFI::Pointer::NULL
@@ -506,7 +549,9 @@ module JavaScriptCore
     end    
     
     def toStringCopy err=FFI::Pointer::NULL
-      JavaScriptCore::Lib.JSValueToCopy(context.to_ptr, self.to_ptr, err)
+      ptr = JavaScriptCore::Lib.JSValueToStringCopy(context.to_ptr, self.to_ptr, err)
+      result = JavaScriptCore::String.wrap(ptr)
+      return result
     end
     
     def toObject err=FFI::Pointer::NULL
@@ -559,6 +604,12 @@ module JavaScriptCore
       result.context = context
       return result
     end  
+    
+    def copyPropertyNames
+      ptr = JavaScriptCore::Lib::JSObjectCopyPropertyNames(context.to_ptr, to_ptr)
+      result = JavaScriptCore::PropertyNameArray.wrap(ptr)
+      return result  
+    end
     
     def callAsFunction this, argc, argv, err=FFI::Pointer::NULL
       ptr = JavaScriptCore::Lib.JSObjectCallAsFunction(context.to_ptr, self.to_ptr, this.to_ptr, argc, argv, err)
@@ -631,3 +682,16 @@ module JS
     end
   end
 end
+
+def JS::Object(ctx)
+  execute ctx, "Object;",  nil
+end
+
+def JS::Array(ctx)
+  execute ctx, "Array;",  nil
+end
+
+def JS::String(ctx)
+  execute ctx, "String;",  nil
+end
+  
