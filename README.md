@@ -63,4 +63,20 @@ JS.execute(cx, "function moof() {return 5;};this.bar(1,2,3,4,5,6);", jo.d)
 
 # And that we can reach JS
 jo.moof.call()
+
+# Have a javascript object wrap a ruby object
+class MyObject
+  attr_reader :foo
+  def initialize
+    @foo = 1
+  end
+  
+  def bang *o
+    puts "BANG!"
+  end
+end
+
+ro = JS::RObject.make(ctx, MyObject.new())
+ctx.getGlobalObject[:myObj] = ro
+JS::execute ctx, "myObj.bang(); myObj.foo();" #=> 1.0
 ```
