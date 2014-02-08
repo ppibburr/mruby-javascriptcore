@@ -1,7 +1,7 @@
 About
 ===
 Bindings to JavaScriptCore from WebKitGTK  
-Uses mruby-ffi-helper and mruby-rubyffi-compat to create bindings  
+Uses mruby-rubyffi-compat to create bindings  
 
 Provides a bridge between mruby and javascriptcore runtimes  
 Properly converting values between the two
@@ -20,7 +20,6 @@ Requirements
 ===
 * [mruby](https://github.com/mruby/mruby)
 * [mruby-rubyffi-compat](https://github.com/ppibburr/mruby-rubyffi-compat) (GEM implementating a substantial subset of ruby-ffi)
-* [mruby-ffi-helper](https://github.com/ppibburr/mruby-ffi-helper) (GEM a FFI Helper)
 
 Example
 ===
